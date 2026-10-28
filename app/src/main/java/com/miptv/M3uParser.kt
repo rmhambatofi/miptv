@@ -24,7 +24,7 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
         val usedIds = HashSet<String>()
         var pending: Entry? = null
         for (raw in lines) {
-            val line = raw.trim().removePrefix("﻿").trim()
+            val line = raw.trim().removePrefix("\uFEFF").trim()
             if (line.isEmpty()) continue
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> pending = parseExtInf(line)

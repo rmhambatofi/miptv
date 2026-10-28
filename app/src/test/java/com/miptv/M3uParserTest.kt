@@ -46,7 +46,7 @@ class M3uParserTest {
     }
 
     @Test fun ignoresBlankLinesCommentsBomAndMissingHeader() {
-        val playlist = "﻿\n\n#EXTINF:-1 group-title=\"A\",One\n\n   \nhttp://a.example/1.ts\n# commentaire\n#EXT-X-SOMETHING:1\nhttp://a.example/orphan.ts\n"
+        val playlist = "\uFEFF\n\n#EXTINF:-1 group-title=\"A\",One\n\n   \nhttp://a.example/1.ts\n# commentaire\n#EXT-X-SOMETHING:1\nhttp://a.example/orphan.ts\n"
         val result = parser.parse(playlist)
         assertEquals(listOf("One", "orphan.ts"), result.channels.map { it.name })
     }
