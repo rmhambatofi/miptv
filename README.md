@@ -54,7 +54,7 @@ Validation manuelle complémentaire sur smartphone : petit écran et grandes pol
 
 ## État initial et branches
 
-Le dépôt initial contenait le prototype TV au commit `66cb377`, sur la seule branche `feature/initial-android-tv`, alors branche par défaut. `main` a été initialisée à partir de ce commit pour conserver l'historique et fournir une base commune. Le portage smartphone est sur `feature/initial-android-phone`, soumis en PR vers `main` sans fusion. La branche par défaut du dépôt n'est pas modifiée automatiquement.
+Le dépôt initial contenait le prototype TV au commit `66cb377`, sur la seule branche `feature/initial-android-tv`, alors branche par défaut. `main` a été initialisée à partir de ce commit pour conserver l'historique et fournir une base commune. Le portage smartphone est sur `feature/initial-android-phone`, soumis en PR vers `main` sans fusion. La PR initiale a ensuite été fusionnée depuis le compte GitHub pendant les vérifications ; les corrections postérieures sont soumises dans la PR #2, laissée ouverte. Au contrôle final, la branche par défaut est `main`. Voir `VALIDATION.md` pour les détails et les résultats distants.
 
 Voir `VALIDATION.md` pour les résultats effectifs de cette livraison.
 
