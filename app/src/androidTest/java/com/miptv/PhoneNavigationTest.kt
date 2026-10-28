@@ -86,8 +86,11 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag("source-url").performTextClearance()
         compose.onNodeWithTag("source-url").performTextInput("https://demo.example/list.m3u")
         compose.onNodeWithTag("add-url").performClick()
-        compose.waitUntil(5_000) { compose.onAllNodesWithTag("no-sources").fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithTag("import-status").assertTextContains("2 chaînes importées", substring = true)
+        // The sources collector and the import status land in separate frames; wait for the final message.
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("import-status") and hasText("2 chaînes importées", substring = true)).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("no-sources").assertDoesNotExist()
         scrollTo("source-1")
         compose.onNodeWithTag("source-1").assertIsDisplayed()
         compose.onNodeWithTag("remove-1").assertExists()
