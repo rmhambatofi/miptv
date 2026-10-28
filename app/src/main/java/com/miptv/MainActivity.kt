@@ -34,11 +34,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val app = application as MiptvApplication
             val model: LiveViewModel = viewModel(factory = viewModelFactory {
-                initializer { LiveViewModel(DemoRepository(), createSavedStateHandle()) }
+                initializer { LiveViewModel(app.repository, createSavedStateHandle()) }
             })
             val state by model.state.collectAsStateWithLifecycle()
-            MiptvTheme { PhoneApp(state, model::navigate, model::category, model::select, model::search, model::openChannel) }
+            MiptvTheme { PhoneApp(state, model.actions()) }
         }
     }
 }
@@ -53,16 +54,31 @@ fun MiptvTheme(content: @Composable () -> Unit) {
     ), content = content)
 }
 
+/** UI callbacks, grouped so screens and tests share one wiring. */
+class PhoneActions(
+    val navigate: (Destination) -> Unit,
+    val category: (String) -> Unit,
+    val select: (Channel) -> Unit,
+    val search: (String) -> Unit,
+    val openChannel: (Channel) -> Unit,
+    val openSources: (Boolean) -> Unit,
+    val addUrlSource: (String, String) -> Unit,
+    val addFileSource: (String, String) -> Unit,
+    val refreshSource: (Long) -> Unit,
+    val removeSource: (Long) -> Unit
+)
+
+fun LiveViewModel.actions() = PhoneActions(::navigate, ::category, ::select, ::search, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource)
+
 @Composable
-fun PhoneApp(
-    state: LiveState,
-    navigate: (Destination) -> Unit,
-    category: (String) -> Unit,
-    select: (Channel) -> Unit,
-    search: (String) -> Unit,
-    openChannel: (Channel) -> Unit
-) {
-    BackHandler(state.destination != Destination.HOME) { navigate(Destination.HOME) }
+fun PhoneApp(state: LiveState, actions: PhoneActions) {
+    val navigate = actions.navigate
+    val category = actions.category
+    val select = actions.select
+    val search = actions.search
+    val openChannel = actions.openChannel
+    BackHandler(state.sourcesOpen) { actions.openSources(false) }
+    BackHandler(!state.sourcesOpen && state.destination != Destination.HOME) { navigate(Destination.HOME) }
     Scaffold(bottomBar = {
         NavigationBar {
             Destination.entries.forEach { destination ->
@@ -93,11 +109,14 @@ fun PhoneApp(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("miptv", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    SuggestionChip(onClick = {}, label = { Text("DÉMO") })
+                    IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.testTag("open-sources")) {
+                        Icon(Icons.Default.Settings, contentDescription = "Sources", tint = if (state.sourcesOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
-            item { Text(state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
-            when (state.destination) {
+            item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
+            if (state.sourcesOpen) sourcesSection(state, actions.addUrlSource, actions.addFileSource, actions.refreshSource, actions.removeSource)
+            else when (state.destination) {
                 Destination.HOME -> {
                     item {
                         Column(Modifier.fillMaxWidth().background(
@@ -128,7 +147,7 @@ fun PhoneApp(
                     item { SectionTitle("Catégories") }
                     item {
                         LazyRow(modifier = Modifier.testTag("category-strip"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(state.catalog.categories, key = { it.id }) { item ->
+                            items(state.categories, key = { it.id }) { item ->
                                 FilterChip(selected = state.categoryId == item.id, onClick = { category(item.id) }, label = { Text(item.name) }, modifier = Modifier.testTag("category-${item.id}"))
                             }
                         }
@@ -139,11 +158,11 @@ fun PhoneApp(
                 }
                 Destination.MOVIES -> {
                     item { Text("Catalogue fictif · Lecture disponible uniquement dans TV.") }
-                    items(DemoRepository.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
+                    items(DemoContent.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
                 }
                 Destination.SERIES -> {
                     item { Text("Catalogue fictif · Lecture disponible uniquement dans TV.") }
-                    items(DemoRepository.series, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
+                    items(DemoContent.series, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
                 }
                 Destination.SEARCH -> {
                     item {

@@ -1,5 +1,7 @@
 package com.miptv
 
+import kotlinx.coroutines.flow.Flow
+
 data class Category(val id: String, val name: String) {
     companion object {
         /** Pseudo-categories shown before the imported groups. */
@@ -36,7 +38,32 @@ data class Catalog(val categories: List<Category>, val channels: List<Channel>) 
     companion object { val EMPTY = Catalog(emptyList(), emptyList()) }
 }
 
-interface ChannelRepository { val catalog: Catalog }
+enum class SourceKind { URL, FILE }
+
+/** A configured playlist. [location] is an `http(s)` URL or a persisted `content://` URI; it is never logged. */
+data class Source(
+    val id: Long,
+    val name: String,
+    val location: String,
+    val kind: SourceKind,
+    val lastRefreshed: Long? = null,
+    val channelCount: Int = 0,
+    val lastError: String? = null
+)
+
+sealed interface ImportResult {
+    data class Success(val source: Source) : ImportResult
+    data class Failure(val message: String) : ImportResult
+}
+
+interface ChannelRepository {
+    val catalog: Flow<Catalog>
+    val sources: Flow<List<Source>>
+    suspend fun addSource(name: String, location: String, kind: SourceKind): ImportResult
+    suspend fun refreshSource(id: Long): ImportResult
+    suspend fun removeSource(id: Long)
+    suspend fun setFavorite(channelId: String, favorite: Boolean)
+}
 
 /** Parsed playlist, before it is attached to a stored source. */
 data class ParsedPlaylist(val categories: List<Category>, val channels: List<Channel>)
