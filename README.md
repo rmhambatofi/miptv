@@ -42,7 +42,7 @@ Les interfaces M3U/Xtream sont des **points d'extension**, pas des importeurs fo
 
 ## Démonstration et droits
 
-La rubrique TV lit des **films à la demande**, et non de vraies chaînes IPTV. Big Buck Bunny (2008, Blender Foundation / Peach) et Sintel (2010, Blender Foundation / Durian) sont distribués sous [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Attribution et informations originales : [Big Buck Bunny](https://peach.blender.org/about/) et [Sintel](https://durian.blender.org/about/). Les vidéos ne sont pas modifiées ni embarquées ; seules les URL HTTPS publiques de démonstration du bucket Google `gtv-videos-bucket/sample` sont utilisées. Leur disponibilité n'est pas garantie. Aucun contenu commercial, fournisseur illégal, secret ou télémétrie n'est livré.
+La rubrique TV lit des **films à la demande**, et non de vraies chaînes IPTV. Big Buck Bunny (2008, Blender Foundation / Peach) et Sintel (2010, Blender Foundation / Durian) sont distribués sous [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Attribution et informations originales : [Big Buck Bunny](https://peach.blender.org/about/) et [Sintel](https://durian.blender.org/about/). Les vidéos ne sont pas modifiées ni embarquées ; seules les bandes-annonces officielles publiées en HTTPS par la Blender Foundation sur `download.blender.org` sont utilisées (`peach/trailer/trailer_480p.mov` et `durian/trailer/sintel_trailer-720p.mp4`). L'ancien bucket Google `gtv-videos-bucket/sample` renvoie désormais 403 et a été abandonné. La disponibilité des fichiers n'est pas garantie. Aucun contenu commercial, fournisseur illégal, secret ou télémétrie n'est livré.
 
 ## Tests et vérification
 
