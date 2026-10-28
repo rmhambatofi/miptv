@@ -37,9 +37,25 @@ Le lot 2 (parseur) a été commité avant le lot 1 parce que l'importation d'une
 
 Première exécution instrumentée : 5 échecs de mécanique de test (`performScrollTo()` sur des éléments `LazyColumn` non encore composés, clic sur un bouton hors écran, sélecteur de texte ambigu entre le champ de saisie et la fiche source), corrigés en faisant défiler la liste jusqu'à l'élément (`performScrollToNode`) et en ciblant les `testTag`. Deuxième exécution : 10/10. Pendant cette exécution, le Xiaomi 15 s'est connecté en débogage Wi-Fi et Gradle a tenté d'y installer l'APK : refus HyperOS `INSTALL_FAILED_USER_RESTRICTED` connu, sans rapport avec le code ; l'APK debug a été déposé dans `/sdcard/Download/miptv.apk` pour installation manuelle.
 
+## Validation sur téléphone physique (Xiaomi 15, HyperOS 3 / Android 16)
+
+Le 29 octobre 2026, APK debug du commit `3167fcc` installé depuis Téléchargements (validation manuelle de l'installateur MIUI), piloté par scripts `monkey` (touches dans la fenêtre de l'app et sur le clavier Gboard), lu par `uiautomator dump`, captures d'écran et copie de la base Room via `run-as`.
+
+| Scénario | Résultat |
+| --- | --- |
+| Ajout d'une source par adresse (`iptv-org.github.io/iptv/countries/fr.m3u`) | « 198 chaînes importées », date d'actualisation affichée, hôte seul affiché |
+| Catalogue TV | 29 catégories (« Toutes », « Favoris » + 27 groupes), 198 chaînes, 197 logos chargés par Coil, défilement fluide |
+| Filtre et catégorie | « france » → 21 chaînes ; catégorie General → 27, avec filtre → 7 ; effacement du filtre OK |
+| Lecture HLS | BFM Business 1080p lu par le décodeur matériel `c2.qti.avc.decoder`, commandes tactiles affichées |
+| Plein écran | Paysage (`ROTATION_90`), barres système masquées, le même lecteur continue (horodatage chaîne continu) ; sortie par la croix, retour portrait, lecture toujours active |
+| Favoris | Étoile sur la fiche et dans l'aperçu, catégorie « Favoris », ligne présente dans la table `favorites` |
+| Persistance | Après `am force-stop` et relance : 198 chaînes restaurées, `lastRefreshed` inchangé (aucun réimport), favori conservé |
+
+Première tentative de lecture (6ter, flux `http://…:9999`) restée en « Chargement… » plus de 30 s puis remplacée par une autre chaîne : le flux répond depuis le Mac mais pas depuis le téléphone dans le délai ; ExoPlayer réessaie avant de signaler l'erreur. Le message d'erreur et le bouton « Réessayer » n'ont donc pas été observés sur appareil (couverts par les tests unitaires et instrumentés).
+
 ## Limites
 
-- Aucune validation fonctionnelle sur téléphone physique dans cette livraison : HyperOS refuse `adb install` ; l'APK attend une validation manuelle dans Téléchargements, puis le pilotage `monkey` reste possible (voir mémoire de projet).
+- Non vérifié sur appareil : erreur de lecture et nouvel essai, import depuis un fichier SAF, actualisation et suppression d'une source, arrière-plan/reprise, playlist de plusieurs dizaines de milliers de chaînes.
 - Les tests instrumentés n'ouvrent aucun flux réseau ; la lecture réelle (HLS/TS, décodage, plein écran effectif, rotation, arrière-plan) et les logos distants nécessitent une validation manuelle avec une playlist réelle.
 - Le sélecteur de fichiers SAF n'est pas automatisable en test ; la révocation d'une permission persistée est traitée par le message « Fichier inaccessible » mais n'a pas été exercée.
 - Playlists de plusieurs dizaines de milliers de lignes : parseur vérifié sur 25 000 chaînes en test unitaire ; l'insertion Room par lots de 500 et l'affichage `LazyColumn` n'ont pas été mesurés sur appareil.
