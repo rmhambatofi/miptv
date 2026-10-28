@@ -95,6 +95,7 @@ class PhoneActions(
     val search: (String) -> Unit,
     val filter: (String) -> Unit,
     val fullscreen: (Boolean) -> Unit,
+    val toggleFavorite: (Channel) -> Unit,
     val openChannel: (Channel) -> Unit,
     val openSources: (Boolean) -> Unit,
     val addUrlSource: (String, String) -> Unit,
@@ -104,7 +105,7 @@ class PhoneActions(
 )
 
 fun LiveViewModel.actions() = PhoneActions(
-    ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource
+    ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::toggleFavorite, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource
 )
 
 @Composable
@@ -190,7 +191,7 @@ private fun LazyListScope.homeSection(state: LiveState, actions: PhoneActions) {
     }
     if (state.hasSources) {
         item { SectionTitle("À découvrir") }
-        items(state.catalog.channels.take(10), key = { "home-${it.id}" }) { channel -> ChannelCard(channel, state, false) { actions.openChannel(channel) } }
+        items(state.catalog.channels.take(10), key = { "home-${it.id}" }) { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
     }
 }
 
@@ -215,7 +216,7 @@ private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actio
                     Text("Touchez une chaîne ci-dessous pour lancer la lecture.")
                 }
             }
-        } else Preview(playback, actions.fullscreen)
+        } else Preview(playback, state.selected?.favorite == true, actions.fullscreen) { actions.toggleFavorite(playback.channel) }
     }
     item { SectionTitle("Catégories") }
     item {
@@ -233,8 +234,17 @@ private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actio
             modifier = Modifier.fillMaxWidth().testTag("filter-input"))
     }
     item { SectionTitle("Chaînes · ${state.visibleChannels.size}") }
-    if (state.visibleChannels.isEmpty()) item { Text(if (state.filter.isBlank()) "Aucune chaîne dans cette catégorie." else "Aucune chaîne ne correspond au filtre.", modifier = Modifier.testTag("empty-category")) }
-    items(state.visibleChannels, key = { it.id }) { channel -> ChannelCard(channel, state, state.selected?.id == channel.id) { actions.select(channel) } }
+    if (state.visibleChannels.isEmpty()) item {
+        Text(
+            when {
+                state.filter.isNotBlank() -> "Aucune chaîne ne correspond au filtre."
+                state.categoryId == Category.FAVORITES.id -> "Aucun favori. Touchez l'étoile d'une chaîne pour l'ajouter."
+                else -> "Aucune chaîne dans cette catégorie."
+            },
+            modifier = Modifier.testTag("empty-category")
+        )
+    }
+    items(state.visibleChannels, key = { it.id }) { channel -> ChannelCard(channel, state, state.selected?.id == channel.id, actions.toggleFavorite) { actions.select(channel) } }
 }
 
 private fun LazyListScope.searchSection(state: LiveState, actions: PhoneActions) {
@@ -246,7 +256,7 @@ private fun LazyListScope.searchSection(state: LiveState, actions: PhoneActions)
     }
     item { Text("Recherche locale parmi ${state.catalog.channels.size} chaînes importées.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
     if (state.searchChannels.isEmpty()) item { Text("Aucun résultat.") }
-    items(state.searchChannels, key = { it.id }) { channel -> ChannelCard(channel, state, false) { actions.openChannel(channel) } }
+    items(state.searchChannels, key = { it.id }) { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
 }
 
 @Composable
@@ -268,7 +278,18 @@ fun ChannelLogo(channel: Channel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, onClick: () -> Unit) {
+fun FavoriteButton(favorite: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle, modifier = modifier) {
+        Icon(
+            Icons.Default.Star,
+            contentDescription = if (favorite) "Retirer des favoris" else "Ajouter aux favoris",
+            tint = if (favorite) MaterialTheme.colorScheme.primary else Color(0xFF5A6070)
+        )
+    }
+}
+
+@Composable
+private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, toggleFavorite: (Channel) -> Unit, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("channel-${channel.id}"),
         colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF3B2534) else MaterialTheme.colorScheme.surface)) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -280,6 +301,7 @@ private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, o
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1
                 )
             }
+            FavoriteButton(channel.favorite, Modifier.testTag("favorite-${channel.id}")) { toggleFavorite(channel) }
         }
     }
 }

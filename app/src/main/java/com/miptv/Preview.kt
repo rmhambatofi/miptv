@@ -150,10 +150,11 @@ fun PlayerSurface(playback: Playback, fullscreen: Boolean, onFullscreen: (Boolea
 
 /** Inline preview inside the TV tab. */
 @Composable
-fun Preview(playback: Playback, onFullscreen: (Boolean) -> Unit) {
+fun Preview(playback: Playback, favorite: Boolean, onFullscreen: (Boolean) -> Unit, onToggleFavorite: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(playback.channel.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            FavoriteButton(favorite, Modifier.testTag("preview-favorite"), onToggleFavorite)
             TextButton(onClick = { onFullscreen(true) }, modifier = Modifier.testTag("enter-fullscreen")) { Text("Plein écran") }
         }
         PlayerSurface(playback, fullscreen = false, onFullscreen = onFullscreen, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))

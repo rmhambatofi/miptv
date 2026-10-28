@@ -28,7 +28,7 @@ data class LiveState(
     val fullscreen: Boolean = false,
     val importStatus: ImportStatus = ImportStatus()
 ) {
-    val categories: List<Category> get() = listOf(Category.ALL) + catalog.categories
+    val categories: List<Category> get() = listOf(Category.ALL, Category.FAVORITES) + catalog.categories
     val hasSources: Boolean get() = sources.isNotEmpty()
     val categoryNames: Map<String, String> by lazy { categories.associate { it.id to it.name } }
     val visibleChannels: List<Channel> by lazy {
@@ -67,7 +67,7 @@ class LiveViewModel(
         return copy(catalog = catalog, categoryId = categoryId, selected = selected, fullscreen = fullscreen && selected != null, ready = true)
     }
 
-    private fun categories(catalog: Catalog) = listOf(Category.ALL) + catalog.categories
+    private fun categories(catalog: Catalog) = listOf(Category.ALL, Category.FAVORITES) + catalog.categories
 
     fun navigate(destination: Destination) {
         saved["destination"] = destination.name
@@ -101,6 +101,11 @@ class LiveViewModel(
     fun filter(text: String) {
         saved["filter"] = text
         mutable.update { it.copy(filter = text) }
+    }
+
+    fun toggleFavorite(channel: Channel) {
+        val current = mutable.value.catalog.channels.firstOrNull { it.id == channel.id } ?: return
+        viewModelScope.launch { repository.setFavorite(current.id, !current.favorite) }
     }
 
     fun fullscreen(on: Boolean) {

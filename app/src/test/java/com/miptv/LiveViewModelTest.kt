@@ -27,7 +27,7 @@ class LiveViewModelTest {
         assertTrue(vm.state.value.ready)
         assertEquals(Category.ALL.id, vm.state.value.categoryId)
         assertEquals(2, vm.state.value.visibleChannels.size)
-        assertEquals(listOf("Toutes", "Animation", "Cinéma"), vm.state.value.categories.map { it.name })
+        assertEquals(listOf("Toutes", "Favoris", "Animation", "Cinéma"), vm.state.value.categories.map { it.name })
     }
 
     @Test fun categoryChangeStopsPlaybackAndHandlesEmptySelection() {
@@ -219,5 +219,31 @@ class LiveViewModelTest {
         dispatcher.awaitImport(vm)
         assertFalse(vm.state.value.fullscreen)
         assertNull(vm.state.value.selected)
+    }
+
+    @Test fun favoritesToggleSurviveRefreshAndFeedTheFavoritesCategory() {
+        val vm = loadedModel()
+        vm.category(Category.FAVORITES.id)
+        assertTrue(vm.state.value.visibleChannels.isEmpty())
+        vm.toggleFavorite(vm.channel("sintel"))
+        dispatcher.idle()
+        assertEquals(listOf("Sintel"), vm.state.value.visibleChannels.map { it.name })
+        assertTrue(vm.channel("sintel").favorite)
+        vm.select(vm.channel("sintel"))
+        vm.toggleFavorite(vm.channel("bbb"))
+        dispatcher.idle()
+        assertEquals(2, vm.state.value.visibleChannels.size)
+        assertEquals("sintel", vm.state.value.selected?.tvgId)
+        loader["https://demo.example/list.m3u"] = DEMO_PLAYLIST.replace("Sintel", "Sintel HD")
+        vm.refreshSource(vm.state.value.sources.single().id)
+        dispatcher.awaitImport(vm)
+        assertEquals(listOf("Big Buck Bunny", "Sintel HD"), vm.state.value.visibleChannels.map { it.name })
+        assertEquals("Sintel HD", vm.state.value.selected?.name)
+        vm.toggleFavorite(vm.channel("sintel"))
+        dispatcher.idle()
+        assertEquals(listOf("Big Buck Bunny"), vm.state.value.visibleChannels.map { it.name })
+        // Un-starring the playing channel hides it from the list but does not interrupt playback.
+        assertEquals("Sintel HD", vm.state.value.selected?.name)
+        assertFalse(vm.state.value.selected!!.favorite)
     }
 }

@@ -1,6 +1,7 @@
 package com.miptv
 
 import android.app.Application
+import androidx.room.Room
 
 /** Manual dependency wiring (no Hilt): one repository for the whole process. */
 class MiptvApplication : Application() {
@@ -9,6 +10,7 @@ class MiptvApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        repository = MemoryChannelRepository(AndroidPlaylistLoader(this))
+        val database = Room.databaseBuilder(this, MiptvDatabase::class.java, "miptv.db").build()
+        repository = RoomChannelRepository(database, AndroidPlaylistLoader(this))
     }
 }

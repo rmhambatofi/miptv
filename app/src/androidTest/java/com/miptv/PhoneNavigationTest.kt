@@ -114,4 +114,20 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag("nav-HOME").performClick()
         compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
     }
+
+    @Test fun favoriteStarFeedsTheFavoritesCategory() {
+        val model = launch()
+        compose.onNodeWithTag("nav-TV").performClick()
+        compose.onNodeWithTag("content").performScrollToNode(hasTestTag("category-strip"))
+        compose.onNodeWithTag("category-favorites").performScrollTo().performClick()
+        compose.onNodeWithTag("empty-category").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("category-all").performScrollTo().performClick()
+        compose.onNodeWithTag("content").performScrollToNode(hasTestTag("favorite-" + model.state.value.catalog.channels.first { it.tvgId == "sintel" }.id))
+        compose.onNodeWithTag("favorite-" + model.state.value.catalog.channels.first { it.tvgId == "sintel" }.id).performClick()
+        compose.waitUntil(5_000) { model.state.value.catalog.favorites.size == 1 }
+        compose.onNodeWithTag("content").performScrollToNode(hasTestTag("category-strip"))
+        compose.onNodeWithTag("category-favorites").performScrollTo().performClick()
+        compose.onNodeWithTag(model.channelTag("sintel")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
+    }
 }
