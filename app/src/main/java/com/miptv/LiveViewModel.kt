@@ -21,12 +21,19 @@ data class LiveState(
     val selected: Channel? = null,
     val destination: Destination = Destination.HOME,
     val query: String = "",
+    /** Name filter applied inside the TV tab, on top of the selected category. */
+    val filter: String = "",
     val sourcesOpen: Boolean = false,
     val importStatus: ImportStatus = ImportStatus()
 ) {
     val categories: List<Category> get() = listOf(Category.ALL) + catalog.categories
     val hasSources: Boolean get() = sources.isNotEmpty()
-    val visibleChannels: List<Channel> by lazy { catalog.channelsIn(categoryId) }
+    val categoryNames: Map<String, String> by lazy { categories.associate { it.id to it.name } }
+    val visibleChannels: List<Channel> by lazy {
+        val needle = filter.trim()
+        val inCategory = catalog.channelsIn(categoryId)
+        if (needle.isEmpty()) inCategory else inCategory.filter { it.name.contains(needle, ignoreCase = true) }
+    }
     val searchChannels: List<Channel> by lazy {
         val needle = query.trim()
         if (needle.isEmpty()) catalog.channels else catalog.channels.filter { it.name.contains(needle, ignoreCase = true) }
@@ -41,6 +48,7 @@ class LiveViewModel(
         categoryId = saved.get<String>("category") ?: Category.ALL.id,
         destination = Destination.entries.firstOrNull { it.name == saved.get<String>("destination") } ?: Destination.HOME,
         query = saved.get<String>("query").orEmpty(),
+        filter = saved.get<String>("filter").orEmpty(),
         sourcesOpen = saved.get<Boolean>("sourcesOpen") ?: false
     ))
     val state = mutable.asStateFlow()
@@ -86,6 +94,11 @@ class LiveViewModel(
     fun search(query: String) {
         saved["query"] = query
         mutable.update { it.copy(query = query) }
+    }
+
+    fun filter(text: String) {
+        saved["filter"] = text
+        mutable.update { it.copy(filter = text) }
     }
 
     fun openSources(open: Boolean) {

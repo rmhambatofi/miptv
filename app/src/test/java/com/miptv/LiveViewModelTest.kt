@@ -176,4 +176,18 @@ class LiveViewModelTest {
         vm.navigate(Destination.TV)
         assertFalse(vm.state.value.sourcesOpen)
     }
+
+    @Test fun filterNarrowsTheSelectedCategoryAndIsRestored() {
+        val handle = SavedStateHandle()
+        val vm = loadedModel(handle)
+        vm.filter("  bunny ")
+        assertEquals(listOf("Big Buck Bunny"), vm.state.value.visibleChannels.map { it.name })
+        vm.category(vm.categoryOf("sintel"))
+        assertTrue(vm.state.value.visibleChannels.isEmpty())
+        vm.filter("")
+        assertEquals(listOf("Sintel"), vm.state.value.visibleChannels.map { it.name })
+        vm.filter("x")
+        assertEquals("x", LiveViewModel(MemoryChannelRepository(loader), handle).state.value.filter)
+        assertEquals("Cinéma", vm.state.value.categoryNames[vm.categoryOf("sintel")])
+    }
 }

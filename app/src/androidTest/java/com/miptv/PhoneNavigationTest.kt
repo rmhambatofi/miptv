@@ -82,4 +82,21 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithText("Démo", substring = true).assertDoesNotExist()
         compose.onNodeWithText("demo.example", substring = true).assertExists()
     }
+
+    @Test fun noSourceStateLeadsToSourcesScreenAndFilterNarrowsChannels() {
+        val model = launch(withSource = false)
+        compose.onNodeWithTag("nav-TV").performClick()
+        compose.onNodeWithTag("no-source").assertIsDisplayed()
+        compose.onNodeWithTag("add-source").performClick()
+        compose.onNodeWithTag("source-url").assertIsDisplayed()
+        compose.onNodeWithTag("source-url").performTextInput("https://demo.example/list.m3u")
+        compose.onNodeWithTag("add-url").performClick()
+        compose.waitUntil(5_000) { model.state.value.hasSources }
+        compose.onNodeWithTag("nav-TV").performClick()
+        compose.onNodeWithTag("no-source").assertDoesNotExist()
+        compose.onNodeWithTag("content").performScrollToNode(hasTestTag("filter-input"))
+        compose.onNodeWithTag("filter-input").performTextInput("sin")
+        compose.onNodeWithTag(model.channelTag("sintel")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
+    }
 }
