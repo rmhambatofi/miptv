@@ -4,93 +4,184 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.*
-import dagger.hilt.android.AndroidEntryPoint
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
- private val model: LiveViewModel by viewModels()
- override fun onCreate(savedInstanceState: Bundle?) {
-  super.onCreate(savedInstanceState)
-  setContent { MiptvTheme { val state by model.state.collectAsStateWithLifecycle(); Shell(state, model::category, model::select) } }
- }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            val model: LiveViewModel = viewModel(factory = viewModelFactory {
+                initializer { LiveViewModel(DemoRepository(), createSavedStateHandle()) }
+            })
+            val state by model.state.collectAsStateWithLifecycle()
+            MiptvTheme { PhoneApp(state, model::navigate, model::category, model::select, model::search, model::openChannel) }
+        }
+    }
 }
 
 @Composable
 fun MiptvTheme(content: @Composable () -> Unit) {
- MaterialTheme(colorScheme = darkColorScheme(background = Color(0xFF0B0D12), surface = Color(0xFF181C26), primary = Color(0xFFEC3852), onSurface = Color.White), content = content)
+    MaterialTheme(colorScheme = darkColorScheme(
+        background = Color(0xFF0B0D12), surface = Color(0xFF181C26),
+        primary = Color(0xFFFF647C), onPrimary = Color(0xFF330010),
+        secondary = Color(0xFFA8B8FF), onBackground = Color(0xFFF5F5FA),
+        onSurface = Color(0xFFF5F5FA), onSurfaceVariant = Color(0xFFBCC1D0)
+    ), content = content)
 }
 
 @Composable
-private fun Shell(state: LiveState, category: (String) -> Unit, select: (Channel) -> Unit) {
- val destinations = listOf("Accueil", "Live TV", "Films", "Séries", "Recherche", "Paramètres")
- var page by remember { mutableStateOf("Live TV") }
- val nav = remember { List(6) { FocusRequester() } }
- val categories = remember { FocusRequester() }
- val channels = remember { FocusRequester() }
- val preview = remember { FocusRequester() }
- BackHandler(page != "Accueil") { page = "Accueil"; nav[0].requestFocus() }
- LaunchedEffect(Unit) { nav[1].requestFocus() }
- Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-  Text("miptv", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-  Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-   destinations.forEachIndexed { index, title ->
-    Button(onClick = { page = title }, modifier = Modifier.focusRequester(nav[index]).focusProperties {
-     if (page == "Live TV") down = categories
-    }) { Text(if (page == title) "• $title" else title) }
-   }
-  }
-  if (page == "Live TV") {
-   Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-    Column(Modifier.weight(0.23f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-     Text("CATÉGORIES", style = MaterialTheme.typography.titleMedium)
-     state.catalog.categories.forEachIndexed { index, item ->
-      Button(onClick = { category(item.id) }, modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(categories) else Modifier).focusProperties {
-       up = nav[1]; right = if (state.catalog.channelsIn(state.categoryId).isEmpty()) preview else channels
-      }) { Text(if (state.categoryId == item.id) "• ${item.name}" else item.name) }
-     }
+fun PhoneApp(
+    state: LiveState,
+    navigate: (Destination) -> Unit,
+    category: (String) -> Unit,
+    select: (Channel) -> Unit,
+    search: (String) -> Unit,
+    openChannel: (Channel) -> Unit
+) {
+    BackHandler(state.destination != Destination.HOME) { navigate(Destination.HOME) }
+    Scaffold(bottomBar = {
+        NavigationBar {
+            Destination.entries.forEach { destination ->
+                val icon = when (destination) {
+                    Destination.HOME -> Icons.Default.Home
+                    Destination.TV -> Icons.Default.PlayArrow
+                    Destination.MOVIES -> Icons.Default.Star
+                    Destination.SERIES -> Icons.AutoMirrored.Filled.List
+                    Destination.SEARCH -> Icons.Default.Search
+                }
+                NavigationBarItem(
+                    selected = state.destination == destination,
+                    onClick = { navigate(destination) },
+                    icon = { Icon(icon, contentDescription = null) },
+                    label = { Text(destination.label, maxLines = 1) },
+                    modifier = Modifier.testTag("nav-${destination.name}")
+                )
+            }
+        }
+    }) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding().testTag("content"),
+            contentPadding = PaddingValues(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("miptv", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    SuggestionChip(onClick = {}, label = { Text("DÉMO") })
+                }
+            }
+            item { Text(state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
+            when (state.destination) {
+                Destination.HOME -> {
+                    item {
+                        Column(Modifier.fillMaxWidth().background(
+                            Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844))), RoundedCornerShape(24.dp)
+                        ).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text("Votre cinéma de poche", style = MaterialTheme.typography.headlineMedium)
+                            Text("Découvrez une expérience mobile, avec des films de démonstration ouverts et aucun compte à configurer.")
+                            Button(onClick = { navigate(Destination.TV) }) { Text("Explorer la TV") }
+                        }
+                    }
+                    item { SectionTitle("À découvrir") }
+                    items(state.catalog.channels, key = { "home-${it.id}" }) { channel -> ChannelCard(channel, false) { openChannel(channel) } }
+                    item { Text("Mode démonstration · Aucun fournisseur connecté", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                Destination.TV -> {
+                    item { Text("Vidéos de démonstration à la demande. Aucune diffusion TV en direct.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item {
+                        val channel = state.selected
+                        if (channel == null) {
+                            Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center) {
+                                    Text("Votre aperçu", style = MaterialTheme.typography.titleLarge)
+                                    Text("Touchez une chaîne ci-dessous pour lancer la démo.")
+                                }
+                            }
+                        } else key(channel.id) { Preview(channel) }
+                    }
+                    item { SectionTitle("Catégories") }
+                    item {
+                        LazyRow(modifier = Modifier.testTag("category-strip"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(state.catalog.categories, key = { it.id }) { item ->
+                                FilterChip(selected = state.categoryId == item.id, onClick = { category(item.id) }, label = { Text(item.name) }, modifier = Modifier.testTag("category-${item.id}"))
+                            }
+                        }
+                    }
+                    item { SectionTitle("Chaînes · ${state.visibleChannels.size}") }
+                    if (state.visibleChannels.isEmpty()) item { Text("Aucune chaîne dans cette catégorie.", modifier = Modifier.testTag("empty-category")) }
+                    items(state.visibleChannels, key = { it.id }) { channel -> ChannelCard(channel, state.selected == channel) { select(channel) } }
+                }
+                Destination.MOVIES -> {
+                    item { Text("Catalogue fictif · Lecture disponible uniquement dans TV.") }
+                    items(DemoRepository.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
+                }
+                Destination.SERIES -> {
+                    item { Text("Catalogue fictif · Lecture disponible uniquement dans TV.") }
+                    items(DemoRepository.series, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
+                }
+                Destination.SEARCH -> {
+                    item {
+                        OutlinedTextField(value = state.query, onValueChange = search,
+                            label = { Text("Rechercher une démo") }, singleLine = true,
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            modifier = Modifier.fillMaxWidth().testTag("search-input"))
+                    }
+                    item { Text("Recherche locale parmi les chaînes de démonstration.") }
+                    if (state.searchChannels.isEmpty()) item { Text("Aucun résultat.") }
+                    items(state.searchChannels, key = { it.id }) { channel -> ChannelCard(channel, false) { openChannel(channel) } }
+                }
+            }
+        }
     }
-    Column(Modifier.weight(0.30f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-     Text("CHAÎNES · DÉMO", style = MaterialTheme.typography.titleMedium)
-     val visible = state.catalog.channelsIn(state.categoryId)
-     if (visible.isEmpty()) Text("Aucune chaîne dans cette catégorie.")
-     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(8.dp)) {
-      itemsIndexed(visible, key = { _, item -> item.id }) { index, item ->
-       Button(onClick = { select(item) }, modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(channels) else Modifier).focusProperties {
-        left = categories; right = preview
-        if (index == 0) up = nav[1]
-       }) { Text(if (state.selected?.id == item.id) "▶ ${item.name}" else item.name) }
-      }
-     }
+}
+
+@Composable
+private fun SectionTitle(title: String) { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+
+@Composable
+private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("channel-${channel.id}"),
+        colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF3B2534) else MaterialTheme.colorScheme.surface)) {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column {
+                Text(channel.name, style = MaterialTheme.typography.titleMedium)
+                Text(if (selected) "Sélectionnée · Vidéo de démo" else "Vidéo de démo · Toucher pour regarder", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
-    Column(Modifier.weight(0.47f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-     Text(state.selected?.name ?: "APERÇU", style = MaterialTheme.typography.titleMedium)
-     if (state.selected != null) Preview(state.selected, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-     else Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surface).padding(20.dp)) { Text("Choisissez une chaîne puis appuyez sur OK.") }
-     Text("Films de démonstration à la demande — pas une diffusion en direct.", style = MaterialTheme.typography.bodySmall)
-     Button(onClick = { if (state.catalog.channelsIn(state.categoryId).isNotEmpty()) channels.requestFocus() else categories.requestFocus() }, modifier = Modifier.focusRequester(preview).focusProperties { left = if (state.catalog.channelsIn(state.categoryId).isEmpty()) categories else channels; up = nav[1] }) { Text("Choisir une chaîne") }
+}
+
+@Composable
+private fun CatalogCard(title: String, description: String) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
-   }
-  } else {
-   Text(page, style = MaterialTheme.typography.headlineLarge)
-   Text(when (page) {
-    "Accueil" -> "Bienvenue dans miptv. Ouvrez Live TV pour découvrir le lecteur."
-    "Paramètres" -> "Mode démonstration · Aucun fournisseur configuré · Aucun compte requis."
-    else -> "Cette rubrique sera disponible dans un prochain sprint."
-   })
-  }
- }
 }

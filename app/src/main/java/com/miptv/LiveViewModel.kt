@@ -1,26 +1,55 @@
 package com.miptv
 
-import android.app.Application
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import dagger.hilt.android.HiltAndroidApp
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flowOf
-import javax.inject.Inject
 
-@HiltAndroidApp class MiptvApp : Application()
-class DemoRepository @Inject constructor() : ChannelRepository {
- val demo = Catalog(listOf(Category("demo", "Démonstration"), Category("empty", "Favoris")), listOf(
-  Channel("bbb", "Big Buck Bunny", "demo", "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-  Channel("sintel", "Sintel", "demo", "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4")
- ))
- override val catalog = flowOf(demo)
+enum class Destination(val label: String) { HOME("Accueil"), TV("TV"), MOVIES("Films"), SERIES("Séries"), SEARCH("Recherche") }
+data class LiveState(
+    val catalog: Catalog,
+    val categoryId: String,
+    val selected: Channel? = null,
+    val destination: Destination = Destination.HOME,
+    val query: String = ""
+) {
+    val visibleChannels get() = catalog.channelsIn(categoryId)
+    val searchChannels get() = catalog.channels.filter { it.name.contains(query.trim(), ignoreCase = true) }
 }
-data class LiveState(val catalog: Catalog, val categoryId: String = "demo", val selected: Channel? = null)
-@HiltViewModel class LiveViewModel @Inject constructor(repository: DemoRepository) : ViewModel() {
- private val mutable = MutableStateFlow(LiveState(repository.demo))
- val state = mutable.asStateFlow()
- fun category(id: String) { if (mutable.value.catalog.categories.any { it.id == id }) mutable.value = mutable.value.copy(categoryId = id, selected = null) }
- fun select(channel: Channel) { if (channel in mutable.value.catalog.channelsIn(mutable.value.categoryId)) mutable.value = mutable.value.copy(selected = channel) }
+class LiveViewModel(
+    repository: ChannelRepository = DemoRepository(),
+    private val saved: SavedStateHandle = SavedStateHandle()
+) : ViewModel() {
+    private val catalog = repository.catalog
+    private val initialCategory = saved.get<String>("category")?.takeIf { id -> catalog.categories.any { it.id == id } }
+        ?: catalog.categories.firstOrNull()?.id.orEmpty()
+    private val mutable = MutableStateFlow(LiveState(
+        catalog = catalog,
+        categoryId = initialCategory,
+        destination = Destination.entries.firstOrNull { it.name == saved.get<String>("destination") } ?: Destination.HOME,
+        query = saved.get<String>("query").orEmpty()
+    ))
+    val state = mutable.asStateFlow()
+    fun navigate(destination: Destination) {
+        saved["destination"] = destination.name
+        mutable.value = mutable.value.copy(destination = destination, selected = null)
+    }
+    fun category(id: String) {
+        if (catalog.categories.none { it.id == id } || id == mutable.value.categoryId) return
+        saved["category"] = id
+        mutable.value = mutable.value.copy(categoryId = id, selected = null)
+    }
+    fun select(channel: Channel) {
+        if (channel in mutable.value.visibleChannels) mutable.value = mutable.value.copy(selected = channel)
+    }
+    fun openChannel(channel: Channel) {
+        if (channel !in catalog.channels) return
+        navigate(Destination.TV)
+        category(channel.categoryId)
+        select(channel)
+    }
+    fun search(query: String) {
+        saved["query"] = query
+        mutable.value = mutable.value.copy(query = query)
+    }
 }
