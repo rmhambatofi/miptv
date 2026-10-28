@@ -5,8 +5,8 @@ class DemoRepository : ChannelRepository {
     override val catalog = Catalog(
         listOf(Category("animation", "Animation"), Category("cinema", "Cinéma"), Category("empty", "Découverte")),
         listOf(
-            Channel("bbb", "Big Buck Bunny", "animation", "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-            Channel("sintel", "Sintel", "cinema", "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4")
+            Channel("bbb", "Big Buck Bunny", "animation", "https://download.blender.org/peach/trailer/trailer_480p.mov"),
+            Channel("sintel", "Sintel", "cinema", "https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4")
         )
     )
     companion object {

@@ -27,6 +27,8 @@ fun Preview(channel: Channel) {
     DisposableEffect(player, owner) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
+                // After an error the player goes back to IDLE; keep the error message visible until a retry.
+                if (failed && state == Player.STATE_IDLE) return
                 status = when (state) {
                     Player.STATE_BUFFERING -> "Chargement…"
                     Player.STATE_READY -> "Utilisez les commandes tactiles pour lire ou mettre en pause."
@@ -62,6 +64,6 @@ fun Preview(channel: Channel) {
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
         )
         Text(status, style = MaterialTheme.typography.bodySmall)
-        if (failed) Button(onClick = { failed = false; player.prepare(); player.play() }) { Text("Réessayer") }
+        if (failed) Button(onClick = { failed = false; status = "Chargement…"; player.prepare(); player.play() }) { Text("Réessayer") }
     }
 }
