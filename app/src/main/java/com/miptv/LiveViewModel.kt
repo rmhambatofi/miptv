@@ -24,6 +24,8 @@ data class LiveState(
     /** Name filter applied inside the TV tab, on top of the selected category. */
     val filter: String = "",
     val sourcesOpen: Boolean = false,
+    /** Only meaningful with a selection; cleared whenever the selection is cleared. */
+    val fullscreen: Boolean = false,
     val importStatus: ImportStatus = ImportStatus()
 ) {
     val categories: List<Category> get() = listOf(Category.ALL) + catalog.categories
@@ -62,14 +64,14 @@ class LiveViewModel(
         // No SavedStateHandle write here: collectors may run off the main thread, and an unknown saved category is re-validated on restore.
         val categoryId = if (categories(catalog).any { it.id == categoryId }) categoryId else Category.ALL.id
         val selected = selected?.let { current -> catalog.channels.firstOrNull { it.id == current.id } }
-        return copy(catalog = catalog, categoryId = categoryId, selected = selected, ready = true)
+        return copy(catalog = catalog, categoryId = categoryId, selected = selected, fullscreen = fullscreen && selected != null, ready = true)
     }
 
     private fun categories(catalog: Catalog) = listOf(Category.ALL) + catalog.categories
 
     fun navigate(destination: Destination) {
         saved["destination"] = destination.name
-        mutable.update { it.copy(destination = destination, selected = null) }
+        mutable.update { it.copy(destination = destination, selected = null, fullscreen = false) }
         openSources(false)
     }
 
@@ -77,7 +79,7 @@ class LiveViewModel(
         val state = mutable.value
         if (state.categories.none { it.id == id } || id == state.categoryId) return
         saved["category"] = id
-        mutable.update { it.copy(categoryId = id, selected = null) }
+        mutable.update { it.copy(categoryId = id, selected = null, fullscreen = false) }
     }
 
     fun select(channel: Channel) {
@@ -101,9 +103,13 @@ class LiveViewModel(
         mutable.update { it.copy(filter = text) }
     }
 
+    fun fullscreen(on: Boolean) {
+        mutable.update { it.copy(fullscreen = on && it.selected != null) }
+    }
+
     fun openSources(open: Boolean) {
         saved["sourcesOpen"] = open
-        mutable.update { if (open) it.copy(sourcesOpen = true, selected = null) else it.copy(sourcesOpen = false, importStatus = ImportStatus()) }
+        mutable.update { if (open) it.copy(sourcesOpen = true, selected = null, fullscreen = false) else it.copy(sourcesOpen = false, importStatus = ImportStatus()) }
     }
 
     fun addUrlSource(name: String, url: String) {

@@ -99,4 +99,19 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag(model.channelTag("sintel")).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
     }
+
+    @Test fun selectingAChannelShowsPreviewAndFullscreenToggles() {
+        val model = launch()
+        compose.onNodeWithTag("nav-TV").performClick()
+        compose.onNodeWithTag("content").performScrollToNode(hasTestTag(model.channelTag("bbb")))
+        compose.onNodeWithTag(model.channelTag("bbb")).performClick()
+        compose.onNodeWithTag("content").performScrollToNode(hasTestTag("player-status"))
+        compose.onNodeWithTag("player-status").assertExists()
+        compose.onNodeWithTag("enter-fullscreen").performClick()
+        compose.onNodeWithTag("fullscreen-player").assertIsDisplayed()
+        compose.onNodeWithTag("exit-fullscreen").performClick()
+        compose.onNodeWithTag("fullscreen-player").assertDoesNotExist()
+        compose.onNodeWithTag("nav-HOME").performClick()
+        compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
+    }
 }

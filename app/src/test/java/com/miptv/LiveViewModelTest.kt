@@ -190,4 +190,34 @@ class LiveViewModelTest {
         assertEquals("x", LiveViewModel(MemoryChannelRepository(loader), handle).state.value.filter)
         assertEquals("Cinéma", vm.state.value.categoryNames[vm.categoryOf("sintel")])
     }
+
+    @Test fun fullscreenRequiresASelectionAndEndsWithIt() {
+        val vm = loadedModel()
+        vm.fullscreen(true)
+        assertFalse(vm.state.value.fullscreen)
+        vm.openChannel(vm.channel("bbb"))
+        vm.fullscreen(true)
+        assertTrue(vm.state.value.fullscreen)
+        vm.fullscreen(false)
+        assertFalse(vm.state.value.fullscreen)
+        vm.fullscreen(true)
+        vm.category(vm.categoryOf("sintel"))
+        assertFalse(vm.state.value.fullscreen)
+        vm.select(vm.channel("sintel"))
+        vm.fullscreen(true)
+        vm.navigate(Destination.HOME)
+        assertFalse(vm.state.value.fullscreen)
+        assertNull(vm.state.value.selected)
+    }
+
+    @Test fun fullscreenEndsWhenTheChannelVanishesOnRefresh() {
+        val vm = loadedModel()
+        vm.openChannel(vm.channel("sintel"))
+        vm.fullscreen(true)
+        loader["https://demo.example/list.m3u"] = "#EXTM3U\n#EXTINF:-1 tvg-id=\"bbb\" group-title=\"Animation\",Big Buck Bunny\nhttps://a/1\n"
+        vm.refreshSource(vm.state.value.sources.single().id)
+        dispatcher.awaitImport(vm)
+        assertFalse(vm.state.value.fullscreen)
+        assertNull(vm.state.value.selected)
+    }
 }

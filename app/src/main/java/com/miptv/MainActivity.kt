@@ -1,5 +1,7 @@
 package com.miptv
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -24,9 +26,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,8 +51,29 @@ class MainActivity : ComponentActivity() {
                 initializer { LiveViewModel(app.repository, createSavedStateHandle()) }
             })
             val state by model.state.collectAsStateWithLifecycle()
+            FullscreenEffect(state.fullscreen)
             MiptvTheme { PhoneApp(state, model.actions()) }
         }
+    }
+}
+
+/** Landscape with hidden system bars while a channel plays fullscreen; restored on exit and on dispose. */
+@Composable
+fun FullscreenEffect(fullscreen: Boolean) {
+    val activity = LocalContext.current as? Activity ?: return
+    val view = LocalView.current
+    DisposableEffect(fullscreen) {
+        val controller = WindowInsetsControllerCompat(activity.window, view)
+        fun apply(on: Boolean) {
+            activity.requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+            if (on) {
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+        apply(fullscreen)
+        onDispose { if (fullscreen) apply(false) }
     }
 }
 
@@ -66,6 +94,7 @@ class PhoneActions(
     val select: (Channel) -> Unit,
     val search: (String) -> Unit,
     val filter: (String) -> Unit,
+    val fullscreen: (Boolean) -> Unit,
     val openChannel: (Channel) -> Unit,
     val openSources: (Boolean) -> Unit,
     val addUrlSource: (String, String) -> Unit,
@@ -75,11 +104,18 @@ class PhoneActions(
 )
 
 fun LiveViewModel.actions() = PhoneActions(
-    ::navigate, ::category, ::select, ::search, ::filter, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource
+    ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource
 )
 
 @Composable
 fun PhoneApp(state: LiveState, actions: PhoneActions) {
+    // Hoisted above both layouts: switching to fullscreen re-attaches the surface, never the player.
+    val playback = rememberPlayback(state.selected)
+    if (state.fullscreen && playback != null) {
+        BackHandler { actions.fullscreen(false) }
+        FullscreenPlayer(playback) { actions.fullscreen(false) }
+        return
+    }
     BackHandler(state.sourcesOpen) { actions.openSources(false) }
     BackHandler(!state.sourcesOpen && state.destination != Destination.HOME) { actions.navigate(Destination.HOME) }
     Scaffold(bottomBar = {
@@ -121,7 +157,7 @@ fun PhoneApp(state: LiveState, actions: PhoneActions) {
             when {
                 state.sourcesOpen -> sourcesSection(state, actions.addUrlSource, actions.addFileSource, actions.refreshSource, actions.removeSource)
                 state.destination == Destination.HOME -> homeSection(state, actions)
-                state.destination == Destination.TV -> tvSection(state, actions)
+                state.destination == Destination.TV -> tvSection(state, playback, actions)
                 state.destination == Destination.MOVIES -> {
                     item { Text("Catalogue fictif · Les films arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(DemoContent.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
@@ -158,7 +194,7 @@ private fun LazyListScope.homeSection(state: LiveState, actions: PhoneActions) {
     }
 }
 
-private fun LazyListScope.tvSection(state: LiveState, actions: PhoneActions) {
+private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actions: PhoneActions) {
     if (state.ready && !state.hasSources) {
         item {
             Card(Modifier.fillMaxWidth().testTag("no-source")) {
@@ -172,15 +208,14 @@ private fun LazyListScope.tvSection(state: LiveState, actions: PhoneActions) {
         return
     }
     item {
-        val channel = state.selected
-        if (channel == null) {
+        if (playback == null) {
             Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center) {
                     Text("Votre aperçu", style = MaterialTheme.typography.titleLarge)
                     Text("Touchez une chaîne ci-dessous pour lancer la lecture.")
                 }
             }
-        } else key(channel.id) { Preview(channel) }
+        } else Preview(playback, actions.fullscreen)
     }
     item { SectionTitle("Catégories") }
     item {

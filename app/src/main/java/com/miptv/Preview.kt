@@ -1,10 +1,18 @@
 package com.miptv
 
+import android.content.Context
+import androidx.annotation.OptIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -13,23 +21,45 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 
-/** Released when leaving TV or changing selection; playback never continues in the background. */
+/** One ExoPlayer for one channel. Status text and error flag drive the UI; [retry] re-prepares. */
+class Playback(val channel: Channel, val player: ExoPlayer) {
+    var status by mutableStateOf("Chargement…")
+    var failed by mutableStateOf(false)
+    fun retry() {
+        failed = false
+        status = "Chargement…"
+        player.seekToDefaultPosition()
+        player.prepare()
+        player.play()
+    }
+}
+
+/**
+ * Hoisted player state: created when a channel is selected, released when the selection changes or
+ * disappears, paused when the activity stops. Keeping it above the layout means entering fullscreen
+ * only re-attaches the surface instead of recreating the player.
+ */
 @Composable
-fun Preview(channel: Channel) {
+fun rememberPlayback(channel: Channel?): Playback? {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
-    val player = remember(context, channel.id) { ExoPlayer.Builder(context).build() }
-    var status by remember(channel.id) { mutableStateOf("Chargement…") }
-    var failed by remember(channel.id) { mutableStateOf(false) }
-    DisposableEffect(player, owner) {
+    val playback = remember(channel?.id) { channel?.let { Playback(it, buildPlayer(context, it)) } }
+    DisposableEffect(playback, owner) {
+        if (playback == null) return@DisposableEffect onDispose { }
+        val player = playback.player
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 // After an error the player goes back to IDLE; keep the error message visible until a retry.
-                if (failed && state == Player.STATE_IDLE) return
-                status = when (state) {
+                if (playback.failed && state == Player.STATE_IDLE) return
+                playback.status = when (state) {
                     Player.STATE_BUFFERING -> "Chargement…"
                     Player.STATE_READY -> "Utilisez les commandes tactiles pour lire ou mettre en pause."
                     Player.STATE_ENDED -> "Lecture terminée"
@@ -37,16 +67,20 @@ fun Preview(channel: Channel) {
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
-                failed = true
-                status = "Lecture indisponible. Vérifiez votre connexion."
+                if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                    playback.status = "Flux en direct décalé, reprise…"
+                    player.seekToDefaultPosition()
+                    player.prepare()
+                    return
+                }
+                playback.failed = true
+                playback.status = describePlaybackError(error)
             }
         }
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) player.pause()
-        }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) player.pause() }
         player.addListener(listener)
         owner.lifecycle.addObserver(observer)
-        player.setMediaItem(MediaItem.fromUri(channel.streamUrl))
+        player.setMediaItem(MediaItem.fromUri(playback.channel.streamUrl))
         player.prepare()
         player.playWhenReady = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         onDispose {
@@ -55,15 +89,93 @@ fun Preview(channel: Channel) {
             player.release()
         }
     }
+    return playback
+}
+
+@OptIn(UnstableApi::class)
+private fun buildPlayer(context: Context, channel: Channel): ExoPlayer {
+    val http = DefaultHttpDataSource.Factory()
+        .setUserAgent(channel.userAgent ?: DEFAULT_USER_AGENT)
+        .setAllowCrossProtocolRedirects(true)
+        .setConnectTimeoutMs(15_000)
+        .setReadTimeoutMs(15_000)
+    channel.referer?.let { http.setDefaultRequestProperties(mapOf("Referer" to it)) }
+    return ExoPlayer.Builder(context)
+        .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+        .build()
+}
+
+/** French, user-facing description; never includes the stream URL. */
+@OptIn(UnstableApi::class)
+fun describePlaybackError(error: PlaybackException): String = when (error.errorCode) {
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+    PlaybackException.ERROR_CODE_TIMEOUT -> "Connexion au flux impossible. Vérifiez votre réseau."
+    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
+        val code = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
+        if (code != null) "Le serveur a refusé le flux (HTTP $code)." else "Le serveur a refusé le flux."
+    }
+    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "Flux introuvable (HTTP 404)."
+    PlaybackException.ERROR_CODE_IO_NO_PERMISSION, PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED -> "Accès au flux refusé."
+    PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> "Format du flux non reconnu."
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED -> "Ce flux ne peut pas être décodé sur cet appareil."
+    else -> "Lecture indisponible. Vérifiez votre connexion."
+}
+
+private const val DEFAULT_USER_AGENT = "miptv/0.2 (Android; Media3)"
+
+/** Media3 view bound to the hoisted player; the controller's own fullscreen button toggles [onFullscreen]. */
+@OptIn(UnstableApi::class)
+@Composable
+fun PlayerSurface(playback: Playback, fullscreen: Boolean, onFullscreen: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { context ->
+            PlayerView(context).apply {
+                useController = true
+                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                setFullscreenButtonClickListener { onFullscreen(it) }
+            }
+        },
+        update = { view ->
+            view.player = playback.player
+            view.setFullscreenButtonState(fullscreen)
+        },
+        onRelease = { it.player = null },
+        modifier = modifier
+    )
+}
+
+/** Inline preview inside the TV tab. */
+@Composable
+fun Preview(playback: Playback, onFullscreen: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(channel.name, style = MaterialTheme.typography.titleMedium)
-        AndroidView(
-            factory = { PlayerView(it).apply { useController = true; this.player = player } },
-            update = { it.player = player },
-            onRelease = { it.player = null },
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-        )
-        Text(status, style = MaterialTheme.typography.bodySmall)
-        if (failed) Button(onClick = { failed = false; status = "Chargement…"; player.prepare(); player.play() }) { Text("Réessayer") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(playback.channel.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onFullscreen(true) }, modifier = Modifier.testTag("enter-fullscreen")) { Text("Plein écran") }
+        }
+        PlayerSurface(playback, fullscreen = false, onFullscreen = onFullscreen, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+        Text(playback.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("player-status"))
+        if (playback.failed) Button(onClick = playback::retry, modifier = Modifier.testTag("retry")) { Text("Réessayer") }
+    }
+}
+
+/** Landscape, system bars hidden by the activity; back or the close button returns to the TV tab. */
+@Composable
+fun FullscreenPlayer(playback: Playback, onExit: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black).testTag("fullscreen-player")) {
+        PlayerSurface(playback, fullscreen = true, onFullscreen = { if (!it) onExit() }, modifier = Modifier.fillMaxSize())
+        Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onExit, modifier = Modifier.testTag("exit-fullscreen")) { Icon(Icons.Default.Close, contentDescription = "Quitter le plein écran", tint = Color.White) }
+            Text(playback.channel.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+        }
+        if (playback.failed) {
+            Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(playback.status, color = Color.White)
+                Button(onClick = playback::retry) { Text("Réessayer") }
+            }
+        }
     }
 }
