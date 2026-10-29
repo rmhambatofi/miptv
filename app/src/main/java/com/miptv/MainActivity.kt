@@ -175,11 +175,11 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                 state.destination == Destination.TV -> tvSection(state, pages.tv, playback, actions)
                 state.destination == Destination.MOVIES -> {
                     item { Text("Catalogue fictif · Les films arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(DemoContent.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
+                    items(DemoContent.movies, key = { it.id }) { item -> CatalogCard(item.title, item.synopsis.orEmpty()) }
                 }
                 state.destination == Destination.SERIES -> {
                     item { Text("Catalogue fictif · Les séries arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(DemoContent.series, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
+                    items(DemoContent.series, key = { it.id }) { item -> CatalogCard(item.title, item.synopsis.orEmpty()) }
                 }
                 else -> searchSection(state, pages.search, actions)
             }

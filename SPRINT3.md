@@ -30,6 +30,16 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 - **Construction des URL de lecture au dernier moment**, sans les stocker : `{serveur}/live/{u}/{p}/{id}.{ext}`, `/movie/…/{id}.{ext}`, `/series/…/{episodeId}.{ext}`.
 - **Erreurs en français** : identifiants refusés (`user_info.auth = 0`), compte expiré ou désactivé (`status`, `exp_date`), nombre maximal de connexions atteint, serveur injoignable, réponse non JSON.
 
+### Lot 1 — réalisé (29 octobre 2026)
+
+Livré dans `Domain.kt`, `Json.kt` (nouveau), `Xtream.kt` (nouveau) et `Sources.kt`, avec 33 tests unitaires. Trois décisions prises en cours de route :
+
+- **Lecteur JSON maison** (`JsonStreamReader`) au lieu d'`android.util.JsonReader` : la classe du framework n'est qu'un stub dans les tests unitaires locaux (`isReturnDefaultValues`), ce qui aurait rendu les parseurs testables seulement sur émulateur. Même API en flux, aucune dépendance, nombres rendus en texte pour laisser le parseur Xtream choisir la coercition.
+- **Référence de flux `xtream://{sourceId}/live/{stream_id}.{ext}`** dans `Channel.streamUrl` : les chaînes Xtream rejoignent la table `channels` (lot 2) sans qu'une URL contenant les identifiants y soit jamais écrite. `XtreamStreamRef.resolve(account)` construit l'URL complète au moment de la lecture (lot 3). Films et épisodes portent `sourceId`, identifiant fournisseur et extension, et font de même via `streamRef()`.
+- **`XtreamClient` reçoit le compte et l'identifiant de source** à chaque appel ; `movieDetails` et `seriesDetails` complètent l'entrée de liste connue. Le lot 2 fera porter le compte par la source ; un faux client suffira aux tests d'interface du lot 4.
+
+Également : `Http` partagé entre playlists et Xtream (`HttpStatusException` porte le code seul), `SourceKind.XTREAM` refusé par `AndroidPlaylistLoader` jusqu'au lot 2, `XtreamAccountInfo.blocker()` (expiré, désactivé) et `connectionsMessage()` (connexions saturées) pour le test de connexion du lot 3, `liveExtension` (`ts` sauf compte HLS seul).
+
 ## Lot 2 — Identifiants et persistance
 
 - **Mot de passe chiffré** avec une clé AES-GCM de l'Android Keystore (non exportable) ; seul le texte chiffré est en base. Pas d'`EncryptedSharedPreferences`, dépréciée. Si la clé est perdue (restauration sur un autre appareil), la source passe en erreur « Identifiants à ressaisir ».

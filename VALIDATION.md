@@ -108,6 +108,18 @@ Les points « Non vérifié sur appareil » du Sprint 2 (ci-dessous) sont ainsi 
 - **Doublons de sources.** Rien n'empêche d'ajouter deux fois la même adresse, ce qui double les chaînes. Les identifiants de sources sont aussi réutilisés après une suppression (`MAX(id) + 1`).
 - **Installation.** La première mise à jour n'a pas été appliquée : l'installeur s'était ouvert sur l'ancienne entrée MediaStore de `miptv.apk`, le fichier ayant été redéposé sous le même nom. Le `versionCode` identique n'y est pour rien : au lot 0.4, un APK de même `versionCode` (3), déposé sous un nouveau nom, a bien été installé. Le `versionCode` passe tout de même à 3 (`versionName` 0.3.0) avec le changement de schéma, et l'APK est désormais déposé sous un nouveau nom.
 
+## Sprint 3 — lot 1 : client Xtream et modèle (29 octobre 2026)
+
+Lot testable sans appareil ni compte : aucun réseau, réponses JSON enregistrées et anonymisées (`XtreamFixtures`).
+
+- Unitaires : **65/65** (32 existants, 33 nouveaux : 9 `JsonStreamReaderTest`, 18 `XtreamParserTest`, 6 `XtreamClientTest`).
+- 30 000 films (`get_vod_streams` généré, ≈ 8,5 Mo de JSON) parsés en flux en **0,44 s** sur le Mac ; identifiants uniques, catégories et années conservés.
+- `HttpXtreamClient` exercé contre un serveur local `ServerSocket` : identifiants transmis uniquement en paramètres de requête, redirection suivie en gardant la requête, page HTML et HTTP 503 traduits en français, hôte injoignable sans écho de l'adresse.
+- Aucun message d'erreur (refus, expiration, HTTP 401/403/404/429/5xx, hôte introuvable, URL malformée, `IOException` brute, exception inconnue) ne contient le serveur, l'identifiant ou le mot de passe.
+- Lint : 29 avertissements, aucun nouveau, aucune erreur. Schéma Room inchangé.
+
+Écarts par rapport au plan, consignés dans `SPRINT3.md` : lecteur JSON maison au lieu d'`android.util.JsonReader` (stub dans les tests locaux), et référence `xtream://` stockée dans `Channel.streamUrl` pour que la table `channels` ne contienne jamais d'identifiant.
+
 ## Sprint 2
 
 Résultats du 28 octobre 2026, code vérifié au commit `7457edb` (lot 5 ; les commits suivants ne touchent que la documentation) :

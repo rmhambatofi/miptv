@@ -27,25 +27,27 @@ import kotlinx.coroutines.withContext
 /** Error whose message is safe to show: it never contains the playlist location. */
 class PlaylistException(message: String) : IOException(message)
 
-/** Opens a playlist by location. Implementations must not log the location (it may embed credentials). */
-interface PlaylistLoader { suspend fun open(location: String, kind: SourceKind): InputStream }
+/** HTTP status outside 2xx. The message carries the code only, never the location. */
+class HttpStatusException(val code: Int) : IOException("HTTP $code")
 
-class AndroidPlaylistLoader(private val context: Context) : PlaylistLoader {
-    override suspend fun open(location: String, kind: SourceKind): InputStream = withContext(Dispatchers.IO) {
-        when (kind) {
-            SourceKind.FILE -> context.contentResolver.openInputStream(location.toUri())
-                ?: throw PlaylistException("Fichier inaccessible. Sélectionnez-le à nouveau.")
-            SourceKind.URL -> openUrl(location)
-        }
-    }
+/**
+ * `HttpURLConnection` with bounded timeouts and manual redirects, shared by playlists and the Xtream client.
+ * Never logs the location, which may embed credentials. Throws [HttpStatusException] for a non-2xx status and
+ * [PlaylistException] for a non-HTTP scheme or a broken redirect.
+ */
+object Http {
+    const val USER_AGENT = "miptv/0.3 (Android)"
+    const val CONNECT_TIMEOUT_MS = 15_000
+    const val READ_TIMEOUT_MS = 30_000
+    const val MAX_REDIRECTS = 5
 
-    private fun openUrl(location: String): InputStream {
+    fun open(location: String): InputStream {
         var url = URL(location)
         repeat(MAX_REDIRECTS) {
             val connection = (url.openConnection() as? HttpURLConnection)
                 ?: throw PlaylistException("Seules les adresses http:// et https:// sont acceptées.")
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("User-Agent", USER_AGENT)
             connection.setRequestProperty("Accept", "*/*")
@@ -58,16 +60,26 @@ class AndroidPlaylistLoader(private val context: Context) : PlaylistLoader {
             }
             if (code !in 200..299) {
                 connection.disconnect()
-                throw PlaylistException("Le serveur a répondu HTTP $code.")
+                throw HttpStatusException(code)
             }
             return connection.inputStream
         }
         throw PlaylistException("Trop de redirections.")
     }
+}
 
-    private companion object {
-        const val MAX_REDIRECTS = 5
-        const val USER_AGENT = "miptv/0.2 (Android)"
+/** Opens a playlist by location. Implementations must not log the location (it may embed credentials). */
+interface PlaylistLoader { suspend fun open(location: String, kind: SourceKind): InputStream }
+
+class AndroidPlaylistLoader(private val context: Context) : PlaylistLoader {
+    override suspend fun open(location: String, kind: SourceKind): InputStream = withContext(Dispatchers.IO) {
+        when (kind) {
+            SourceKind.FILE -> context.contentResolver.openInputStream(location.toUri())
+                ?: throw PlaylistException("Fichier inaccessible. Sélectionnez-le à nouveau.")
+            SourceKind.URL -> Http.open(location)
+            // An Xtream source is imported through XtreamClient, not read as a playlist.
+            SourceKind.XTREAM -> throw PlaylistException("Cette source est un fournisseur Xtream, pas une playlist.")
+        }
     }
 }
 
@@ -79,6 +91,7 @@ fun describeImportError(error: Throwable): String = when (error) {
     is SSLException -> "Connexion sécurisée impossible."
     is FileNotFoundException, is SecurityException -> "Fichier inaccessible. Sélectionnez-le à nouveau."
     is IllegalArgumentException, is java.net.MalformedURLException -> "Adresse invalide."
+    is HttpStatusException -> "Le serveur a répondu HTTP ${error.code}."
     is IOException -> "Lecture de la playlist impossible."
     else -> "Importation impossible."
 }
