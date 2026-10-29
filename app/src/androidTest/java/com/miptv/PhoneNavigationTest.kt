@@ -77,19 +77,20 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
     }
 
     @Test fun sourcesScreenAddsUrlAndRejectsInvalidAddress() {
-        launch(withSource = false)
+        val model = launch(withSource = false)
         compose.onNodeWithTag("open-sources").performClick()
         compose.onNodeWithTag("no-sources").assertIsDisplayed()
         compose.onNodeWithTag("source-url").performTextInput("ftp://bad")
         compose.onNodeWithTag("add-url").performClick()
         compose.onNodeWithTag("import-status").assertTextContains("Adresse invalide", substring = true)
-        compose.onNodeWithTag("source-url").performTextClearance()
-        compose.onNodeWithTag("source-url").performTextInput("https://demo.example/list.m3u")
+        // Replace in one action: clearing then typing is not reliable on every API level.
+        compose.onNodeWithTag("source-url").performTextReplacement("https://demo.example/list.m3u")
+        compose.onNodeWithTag("source-url").assertTextContains("https://demo.example/list.m3u")
         compose.onNodeWithTag("add-url").performClick()
-        // The sources collector and the import status land in separate frames; wait for the final message.
-        compose.waitUntil(5_000) {
-            compose.onAllNodes(hasTestTag("import-status") and hasText("2 chaînes importées", substring = true)).fetchSemanticsNodes().isNotEmpty()
-        }
+        compose.waitUntil(5_000) { model.state.value.sources.isNotEmpty() && !model.state.value.importStatus.running }
+        compose.waitForIdle()
+        scrollTo("import-status")
+        compose.onNodeWithTag("import-status").assertTextContains("2 chaînes importées", substring = true)
         compose.onNodeWithTag("no-sources").assertDoesNotExist()
         scrollTo("source-1")
         compose.onNodeWithTag("source-1").assertIsDisplayed()
