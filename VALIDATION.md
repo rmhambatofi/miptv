@@ -39,7 +39,54 @@ Même playlist servie depuis le Mac (`10.0.2.2`). L'application de référence e
 - chaînes chargées par pages et par catégorie : fait ;
 - un favori ne réémet plus le catalogue : fait (test `starringAChannelInvalidatesOnlyTheFavouritesList`) ;
 - temps d'import et mémoire : mesurés ;
-- défilement : non concluant sur émulateur.
+- défilement : non concluant sur émulateur ; mesuré sur appareil au lot 0.3.
+
+## Sprint 3 — lot 0.3 : validation sur le Xiaomi 15 (29 octobre 2026)
+
+**Matériel et méthode.** Xiaomi 15 (`24129PN74G`, HyperOS 3 / Android 16), écran de 1200×2670. Au départ, l'APK debug du Sprint 2 (schéma v1) était installé, avec la source iptv-org (198 chaînes, 2 favoris). La mise à jour est l'APK debug 0.3.0 du lot 0.2 (`7836642`, avec `versionCode` 3). Elle a été installée depuis le gestionnaire de fichiers, et la confirmation de l'installeur MIUI faite par l'utilisateur.
+
+**Pilotage.** HyperOS refuse `input` ; les gestes passent donc par des scripts `monkey` (`Tap`, `Drag`, touches du clavier Gboard). La lecture de l'état passe par `uiautomator dump`, `dumpsys gfxinfo`, `dumpsys audio`, `dumpsys meminfo` et une copie de la base par `run-as`. Les playlists sont servies depuis le Mac sur le réseau local. Une scrutation `uiautomator` prend environ 2,5 s, ce qui borne la précision des durées marquées « ≤ ».
+
+### Volume et mise à jour
+
+Source de 50 000 chaînes importée par adresse dans la v1. Elle a été importée deux fois par erreur (deux touchers sur « Ajouter »), soit 100 198 chaînes au total.
+
+| Mesure | v1 (Sprint 2) | v2 (0.3.0) |
+| --- | --- | --- |
+| Import de 50 000 chaînes (requête → fin du parsing) | ≈ 2 s ; < 8 s jusqu'au message | — |
+| Démarrage à froid, première image | 383 – 443 ms | 378 – 413 ms |
+| Premier démarrage après mise à jour (migration v1 → v2 sur 100 198 chaînes) | — | 3,1 s jusqu'au résumé de l'Accueil, comme un démarrage ordinaire (migration ≲ 1 s) |
+| Tas Java / PSS total | 71 Mo / 216 Mo | 25 Mo / 154 Mo |
+| Défilement, 15 gestes sur « Toutes » : images saccadées | 5,7 – 7,4 % | 4,8 – 8,8 % |
+| Durée d'une image : médiane / 90ᵉ / 99ᵉ percentile | 15 – 18 / 42 – 46 / 69 – 89 ms | 8 – 9 / 38 / 61 – 69 ms |
+| Même mesure avec 198 chaînes seulement (v1) | 0 % ; 5 / 10 / 23 ms | — |
+
+- **Migration** : `user_version` passe à 2, les 3 sources, les 100 198 chaînes et les 2 favoris sont conservés, `searchName` est rempli partout (« Chaîne 0 » → `chaine 0`) et les nouveaux index sont en place.
+- **Défilement** : la v2 divise la mémoire par trois et la durée médiane d'une image par deux. Les saccades restantes ne diminuent pas, alors que le catalogue n'est plus en mémoire. L'hypothèse, non vérifiée, est le chargement des logos (servis depuis le Mac) et la composition des cartes à l'arrivée de chaque page.
+
+### Scénarios
+
+| Scénario | Résultat |
+| --- | --- |
+| Adresse dont l'hôte n'existe pas (faute de frappe) | « Hôte introuvable. Vérifiez l'adresse et la connexion. » après ≈ 29 s (délai DNS), aucune source ajoutée |
+| Import d'un fichier par le sélecteur (`miptv-test.m3u`, Téléchargements) | « 3 chaînes importées depuis « miptv-test.m3u » » |
+| Filtre « flux » saisi au clavier | « Chaînes · 1 », la chaîne de test |
+| Lecture d'un flux absent (HTTP 404 du serveur) | « Le serveur a refusé le flux (HTTP 404). » et « Réessayer », sans l'adresse du flux |
+| « Réessayer » après mise à disposition du flux | Nouvelle requête (200), image affichée, piste audio de l'application `started` |
+| Arrière-plan pendant la lecture, puis retour | Piste `paused` en arrière-plan ; au retour, même chaîne sélectionnée, toujours en pause ; lecture relancée par les commandes tactiles (`started`) |
+| Suppression d'une source de 50 000 chaînes | Liste à jour en ≤ 2,3 s ; 50 203 chaînes restantes |
+| Fichier remplacé sur le téléphone (`adb push`) puis « Actualiser » | « Fichier inaccessible. Sélectionnez-le à nouveau. » ; les 3 chaînes précédentes sont conservées. Android retire l'autorisation d'accès au document supprimé ; c'est le cas de la permission révoquée |
+| Fichier modifié sur place puis « Actualiser » | « 5 chaînes importées », date d'actualisation mise à jour |
+| Actualisation réseau de la source iptv-org | « 198 chaînes importées » en ≤ 2,3 s ; les 2 favoris (BFM Business, RMC Story) sont conservés |
+| Redémarrages à froid successifs | Catalogue restauré sans aucune requête au serveur (pas de réimport) |
+
+Les points « Non vérifié sur appareil » du Sprint 2 (ci-dessous) sont ainsi tous couverts : erreur et nouvel essai, fichier local, actualisation et suppression, arrière-plan, dizaines de milliers de chaînes. Le plein écran en paysage avait été validé au Sprint 2.
+
+### Constats à traiter
+
+- **Fichier remplacé.** Une playlist retéléchargée par-dessus l'ancienne rend la source fichier inaccessible. La seule issue est de la supprimer et de la rajouter. La nouvelle source reçoit un autre identifiant, et les identifiants de chaînes l'incluant, ses favoris sont perdus. Il manquerait un « Sélectionner à nouveau » qui garde la source.
+- **Doublons de sources.** Rien n'empêche d'ajouter deux fois la même adresse, ce qui double les chaînes. Les identifiants de sources sont aussi réutilisés après une suppression (`MAX(id) + 1`).
+- **`versionCode`.** Une mise à jour avec le même `versionCode` n'a pas été appliquée par l'installeur MIUI. Il passe à 3 (`versionName` 0.3.0) avec le changement de schéma.
 
 ## Sprint 2
 
