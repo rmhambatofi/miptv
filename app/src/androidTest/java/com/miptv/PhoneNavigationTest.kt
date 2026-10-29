@@ -3,6 +3,7 @@ package com.miptv
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.test.espresso.Espresso
 import java.io.InputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -34,6 +35,12 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         return model
     }
 
+    /** On API 33+ the soft keyboard stays up after text input, hides buttons and shrinks the lazy viewport. */
+    private fun hideKeyboard() {
+        Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+    }
+
     /** Lazy items only exist once scrolled into composition. */
     private fun scrollTo(tag: String) = compose.onNodeWithTag("content").performScrollToNode(hasTestTag(tag))
     private fun chip(tag: String) {
@@ -58,6 +65,7 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithText("Horizons").assertIsDisplayed()
         compose.onNodeWithTag("nav-SEARCH").performClick()
         compose.onNodeWithTag("search-input").performTextInput("unknown")
+        hideKeyboard()
         compose.onNodeWithText("Aucun résultat.").assertIsDisplayed()
         compose.onNodeWithTag("nav-HOME").performClick()
         compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
@@ -72,6 +80,7 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
         compose.onNodeWithTag("nav-SEARCH").performClick()
         compose.onNodeWithTag("search-input").performTextInput("SINTEL")
+        hideKeyboard()
         compose.onNodeWithTag(model.channelTag("sintel")).assertExists()
         compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
     }
@@ -81,11 +90,14 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag("open-sources").performClick()
         compose.onNodeWithTag("no-sources").assertIsDisplayed()
         compose.onNodeWithTag("source-url").performTextInput("ftp://bad")
+        hideKeyboard()
         compose.onNodeWithTag("add-url").performClick()
         compose.onNodeWithTag("import-status").assertTextContains("Adresse invalide", substring = true)
         // Replace in one action: clearing then typing is not reliable on every API level.
         compose.onNodeWithTag("source-url").performTextReplacement("https://demo.example/list.m3u")
+        hideKeyboard()
         compose.onNodeWithTag("source-url").assertTextContains("https://demo.example/list.m3u")
+        scrollTo("add-url")
         compose.onNodeWithTag("add-url").performClick()
         compose.waitUntil(5_000) { model.state.value.sources.isNotEmpty() && !model.state.value.importStatus.running }
         compose.waitForIdle()
@@ -104,12 +116,15 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag("add-source").performClick()
         compose.onNodeWithTag("source-url").assertIsDisplayed()
         compose.onNodeWithTag("source-url").performTextInput("https://demo.example/list.m3u")
+        hideKeyboard()
+        scrollTo("add-url")
         compose.onNodeWithTag("add-url").performClick()
-        compose.waitUntil(5_000) { model.state.value.hasSources }
+        compose.waitUntil(5_000) { model.state.value.hasSources && !model.state.value.importStatus.running }
         compose.onNodeWithTag("nav-TV").performClick()
         compose.onNodeWithTag("no-source").assertDoesNotExist()
         scrollTo("filter-input")
         compose.onNodeWithTag("filter-input").performTextInput("sin")
+        hideKeyboard()
         scrollTo(model.channelTag("sintel"))
         compose.onNodeWithTag(model.channelTag("sintel")).assertIsDisplayed()
         compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
