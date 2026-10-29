@@ -321,6 +321,30 @@ class XtreamParserTest {
         assertEquals("Le serveur a répondu HTTP 404.", describeImportError(HttpStatusException(404)))
     }
 
+    @Test fun shortEpgDecodesBase64AndFallsBackToLocalTimes() {
+        val paris = java.time.ZoneId.of("Europe/Paris")
+        val programmes = parser.shortEpg(read(XtreamFixtures.SHORT_EPG), "tf1.fr", paris)
+        assertEquals(listOf("Journal de 20h", "Météo", "Film : Le Voyage", "Nuit blanche"), programmes.map { it.title })
+        assertTrue(programmes.all { it.channelKey == "tf1.fr" && it.sourceId == 3L })
+        assertEquals(EpgFixtures.JOURNAL_START, programmes[0].startMs)
+        assertEquals(EpgFixtures.JOURNAL_STOP, programmes[0].stopMs)
+        assertEquals("Le journal, la météo & les sports.", programmes[0].description)
+        assertNull(programmes[1].description)
+        // No timestamps: `start`/`end` read in the given zone.
+        assertEquals(EpgFixtures.FILM_START, programmes[2].startMs)
+        assertEquals(EpgFixtures.FILM_STOP, programmes[2].stopMs)
+        assertEquals("Deux amis traversent un pays.", programmes[2].description)
+        // Clear-text title kept; the listing without any time is dropped.
+        assertEquals(1_793_310_000_000L, programmes[3].startMs)
+        assertTrue(parser.shortEpg(read(XtreamFixtures.SHORT_EPG_EMPTY), "x").isEmpty())
+        assertTrue(parser.shortEpg(read("[]"), "x").isEmpty())
+        assertTrue(parser.shortEpg(read("""{"epg_listings":{}}"""), "x").isEmpty())
+        assertEquals(XtreamParser.UNEXPECTED, assertThrows(XtreamException::class.java) { parser.shortEpg(read("\"non\""), "x") }.message)
+        assertThrows(JsonSyntaxException::class.java) { parser.shortEpg(read(XtreamFixtures.HTML_LOGIN_PAGE), "x") }
+        assertEquals("http://portal.example:8080/xmltv.php?username=u-test&password=p-test", account.xmltvUrl())
+        assertEquals("http://p.example/xmltv.php?username=u%40x&password=a%2Bb%26c", XtreamAccount("http://p.example", "u@x", "a+b&c").xmltvUrl())
+    }
+
     @Test fun helpersParseRatingsYearsAndDurations() {
         assertEquals(7.5, XtreamParser.parseRating("7.5")!!, 0.0)
         assertEquals(7.5, XtreamParser.parseRating(" 7,5 ")!!, 0.0)

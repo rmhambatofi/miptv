@@ -27,6 +27,16 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 - **Client** : `XtreamAccount.xmltvUrl()` et `XtreamClient.shortEpg(account, channelKey, streamId, limit)` ; `Http` inchangé.
 - **Tests** : XMLTV avec décalages horaires, entités, titres multilingues, programmes sans fin, gzip, document tronqué ou HTML ; 100 000 programmes filtrés en flux ; `get_short_epg` réel anonymisé et dégradé ; en-tête M3U avec et sans `url-tvg`.
 
+### Lot 1 — réalisé (29 octobre 2026)
+
+Livré dans `Domain.kt`, `Epg.kt` (nouveau), `Xtream.kt`, `M3uParser.kt`, les fixtures partagées (`EpgFixtures.kt`, `XtreamFixtures.SHORT_EPG`) et le faux client, avec 13 tests unitaires (99 au total, lint toujours à 28 avertissements). Décisions prises en cours de route :
+
+- **SAX plutôt qu'un lecteur XML maison** : `javax.xml.parsers` est réel sur l'appareil (Expat) et sur la JVM des tests (Xerces), contrairement à `XmlPullParser` ; le gestionnaire ne garde que le programme courant, la liste des `<channel>` et le lot en cours. Le DTD déclaré par les générateurs XMLTV n'est jamais téléchargé (`resolveEntity` vide, chargement externe désactivé quand le parseur le permet). Un document dont la racine n'est pas `<tv>` échoue avec « Ce fichier n'est pas un guide XMLTV. », un document coupé avec « Guide XMLTV incomplet ou illisible. » : l'import garde alors les programmes précédents (lot 2).
+- **Fenêtre et filtre de chaînes dans le parseur** : 100 000 programmes de 200 chaînes filtrés sur 50 chaînes favorites et 72 h en 0,6 s sur le Mac, 3 600 gardés, aucun autre programme instancié.
+- **Heures** : `parseXmltvTime` accepte les champs tronqués (`yyyyMMddHHmm`), `Z`, `±hh:mm` et traite l'absence de décalage ou un décalage aberrant comme UTC. Les programmes sans `stop` se ferment au début du suivant sur la même chaîne et sont abandonnés sinon.
+- **`get_short_epg`** : titres et descriptions décodés seulement si le base64 donne de l'UTF-8 imprimable (un titre en clair comme « News » est aussi du base64 valide) ; `start_timestamp`/`stop_timestamp` d'abord, `start`/`end` dans un fuseau fourni ensuite ; `epg_listings` en tableau, en objet indexé ou réponse `[]` acceptés.
+- **En-tête M3U** : `url-tvg`, `x-tvg-url` ou `tvg-url` du premier `#EXTM3U`, première adresse `http(s)` d'une liste séparée par des virgules, rendue dans `ParsedPlaylist.epgUrl` ; la ligne n'est jamais prise pour une chaîne.
+
 ## Lot 2 — Persistance et import
 
 - **Room v4 et migration 3 → 4** : table `programmes` (clé `(sourceId, channelKey, startMs)`, `stopMs`, `title`, `description`, `category`, `episode`, `searchTitle` ; index `(sourceId, channelKey, startMs)`, `(stopMs)`, `(startMs)`) ; colonnes `epgUrl`, `epgRefreshedAt`, `epgError`, `programmeCount` sur `sources` ; colonne `epgKey` sur `channels` (index `(sourceId, epgKey)`). Schéma exporté `4.json`, étape 3 → 4 dans `MigrationTest`.

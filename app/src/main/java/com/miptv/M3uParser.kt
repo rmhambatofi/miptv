@@ -23,11 +23,13 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
         val channels = ArrayList<Channel>()
         val usedIds = HashSet<String>()
         var pending: Entry? = null
+        var epgUrl: String? = null
         for (raw in lines) {
             val line = raw.trim().removePrefix("\uFEFF").trim()
             if (line.isEmpty()) continue
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> pending = parseExtInf(line)
+                line.startsWith("#EXTM3U", ignoreCase = true) -> if (epgUrl == null) epgUrl = parseEpgUrl(line)
                 line.startsWith("#EXTVLCOPT", ignoreCase = true) -> pending?.let { applyVlcOption(it, line) }
                 line.startsWith("#EXTGRP", ignoreCase = true) -> pending?.let { entry ->
                     if (entry.group.isEmpty()) entry.group = line.substringAfter(':', "").trim()
@@ -58,7 +60,21 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
                 }
             }
         }
-        return ParsedPlaylist(categories.values.toList(), channels)
+        return ParsedPlaylist(categories.values.toList(), channels, epgUrl)
+    }
+
+    /**
+     * `url-tvg` (or `x-tvg-url`, `tvg-url`) of the header: the XMLTV guide of the playlist. Several addresses may be
+     * joined by commas; the first `http(s)` one is kept.
+     */
+    private fun parseEpgUrl(header: String): String? {
+        var found: String? = null
+        forEachAttribute(header.substringAfter("#EXTM3U", header)) { key, value ->
+            if (found == null && key.lowercase() in EPG_URL_KEYS) {
+                found = value.split(',').map { it.trim() }.firstOrNull { it.startsWith("http://", true) || it.startsWith("https://", true) }
+            }
+        }
+        return found
     }
 
     private class Entry {
@@ -156,5 +172,6 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
 
     companion object {
         const val DEFAULT_GROUP = "Sans catégorie"
+        private val EPG_URL_KEYS = setOf("url-tvg", "x-tvg-url", "tvg-url")
     }
 }

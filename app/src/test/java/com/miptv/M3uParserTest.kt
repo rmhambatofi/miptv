@@ -30,6 +30,25 @@ class M3uParserTest {
         assertNull(result.channels[2].logoUrl)
     }
 
+    @Test fun headerGuideAddressIsKeptWhenPresent() {
+        val withGuide = """
+            #EXTM3U url-tvg="http://epg.example/guide.xml.gz" x-tvg-url="http://other.example/guide.xml"
+            #EXTINF:-1 tvg-id="fr.tf1",TF1
+            http://stream.example/tf1.ts
+        """.trimIndent()
+        assertEquals("http://epg.example/guide.xml.gz", parser.parse(withGuide).epgUrl)
+        val several = "#EXTM3U x-tvg-url=\"ftp://no.example/x, https://a.example/1.xml ,https://b.example/2.xml\"\n#EXTINF:-1,A\nhttp://a/1.ts\n"
+        assertEquals("https://a.example/1.xml", parser.parse(several).epgUrl)
+        assertNull(parser.parse("#EXTM3U\n#EXTINF:-1,A\nhttp://a/1.ts\n").epgUrl)
+        assertNull(parser.parse("#EXTINF:-1,A\nhttp://a/1.ts\n").epgUrl)
+        assertNull(parser.parse("#EXTM3U url-tvg=\"\"\n#EXTINF:-1,A\nhttp://a/1.ts\n").epgUrl)
+        // Only the first header counts, and it never becomes a channel.
+        val twoHeaders = "#EXTM3U tvg-url=\"http://first.example/g.xml\"\n#EXTM3U url-tvg=\"http://second.example/g.xml\"\n#EXTINF:-1,A\nhttp://a/1.ts\n"
+        val parsed = parser.parse(twoHeaders)
+        assertEquals("http://first.example/g.xml", parsed.epgUrl)
+        assertEquals(1, parsed.channels.size)
+    }
+
     @Test fun missingAttributesFallBackToTitleTvgNameOrUrl() {
         val playlist = """
             #EXTINF:-1,Sans attributs

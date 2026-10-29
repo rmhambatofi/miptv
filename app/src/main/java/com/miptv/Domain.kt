@@ -216,8 +216,36 @@ interface ChannelRepository {
     suspend fun clearProgress(itemId: String)
 }
 
-/** Parsed playlist, before it is attached to a stored source. */
-data class ParsedPlaylist(val categories: List<Category>, val channels: List<Channel>)
+/** Parsed playlist, before it is attached to a stored source. [epgUrl] is the `url-tvg` of the `#EXTM3U` header, when present. */
+data class ParsedPlaylist(val categories: List<Category>, val channels: List<Channel>, val epgUrl: String? = null)
+
+/**
+ * One entry of a programme guide. [channelKey] is the guide's channel id (`tvg-id` of an M3U channel, `epg_channel_id`
+ * of an Xtream channel, `channel` of an XMLTV `<programme>`), scoped by the [sourceId] that imported it. Times are epoch
+ * milliseconds; the guide's own offsets are applied at parse time.
+ */
+data class Programme(
+    val channelKey: String,
+    val startMs: Long,
+    val stopMs: Long,
+    val title: String,
+    val description: String? = null,
+    val category: String? = null,
+    /** « S1 E2 » when the guide numbers the episode. */
+    val episode: String? = null,
+    val sourceId: Long = 0L
+) {
+    val durationMs: Long get() = stopMs - startMs
+    fun isLive(nowMs: Long): Boolean = nowMs >= startMs && nowMs < stopMs
+    /** Elapsed share at [nowMs], 0 before the start and 1 after the end. */
+    fun progress(nowMs: Long): Float = when {
+        durationMs <= 0 -> if (nowMs >= stopMs) 1f else 0f
+        else -> ((nowMs - startMs).toDouble() / durationMs).coerceIn(0.0, 1.0).toFloat()
+    }
+}
+
+/** A `<channel>` of an XMLTV guide: its id, its display names (the first is the main one) and its icon. */
+data class EpgChannel(val id: String, val names: List<String>, val iconUrl: String? = null)
 
 /** M3U import contract. [parse] on a string is kept for small inputs; [parseLines] streams. */
 interface M3uAdapter {
@@ -285,4 +313,6 @@ interface XtreamClient {
     suspend fun series(account: XtreamAccount, sourceId: Long): List<Series>
     /** `get_series_info`: [series] completed, with its seasons and episodes. */
     suspend fun seriesDetails(account: XtreamAccount, series: Series): SeriesInfo
+    /** `get_short_epg`: the next [limit] programmes of a live stream, keyed by [channelKey] (its `epg_channel_id`). */
+    suspend fun shortEpg(account: XtreamAccount, sourceId: Long, streamId: Long, channelKey: String, limit: Int = 10): List<Programme>
 }

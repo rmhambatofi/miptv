@@ -16,6 +16,7 @@ class FakeXtreamClient(var validPassword: String = "p-test") : XtreamClient {
     var seriesCategoriesJson = "[]"
     var seriesJson = XtreamFixtures.SERIES_LIST
     var seriesInfoJson = XtreamFixtures.SERIES_INFO
+    var shortEpgJson = XtreamFixtures.SHORT_EPG
     var failure: Exception? = null
     val calls = ArrayList<String>()
     /** Accounts seen by the fake, to check what the repository sent (and never logged). */
@@ -51,4 +52,7 @@ class FakeXtreamClient(var validPassword: String = "p-test") : XtreamClient {
 
     override suspend fun seriesDetails(account: XtreamAccount, series: Series) =
         call("seriesDetails", account) { XtreamParser(series.sourceId).seriesDetails(StringReader(seriesInfoJson), series) }
+
+    override suspend fun shortEpg(account: XtreamAccount, sourceId: Long, streamId: Long, channelKey: String, limit: Int) =
+        call("shortEpg:$streamId", account) { XtreamParser(sourceId).shortEpg(StringReader(shortEpgJson), channelKey, java.time.ZoneId.of("Europe/Paris")).take(limit) }
 }
