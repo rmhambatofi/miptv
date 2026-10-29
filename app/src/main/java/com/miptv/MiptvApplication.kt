@@ -10,7 +10,7 @@ class MiptvApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val database = Room.databaseBuilder(this, MiptvDatabase::class.java, "miptv.db").build()
+        val database = Room.databaseBuilder(this, MiptvDatabase::class.java, "miptv.db").addMigrations(MIGRATION_1_2).build()
         repository = RoomChannelRepository(database, AndroidPlaylistLoader(this))
     }
 }

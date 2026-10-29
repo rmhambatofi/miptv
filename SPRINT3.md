@@ -15,7 +15,7 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 |---|---------|----------------|
 | 0.1 | Schéma Room exporté (`exportSchema = true`, dossier `app/schemas` versionné) avant la première migration | Le schéma v1 est dans le dépôt ; un test `MigrationTestHelper` ouvre une base v1 remplie |
 | 0.2 | Performance du catalogue : `RoomChannelRepository` émet aujourd'hui **toutes** les chaînes à chaque changement (y compris un simple favori) | Chaînes chargées par catégorie (requête par `categoryId`) ou via Paging 3 ; un favori ne réémet plus le catalogue entier ; mesure sur une playlist de 50 000 chaînes consignée dans `VALIDATION.md` (temps d'import, mémoire, fluidité du défilement) |
-| 0.3 | Validations sur appareil non faites au Sprint 2 | Observées sur le Xiaomi 15 et consignées : erreur de lecture puis « Réessayer », import d'un fichier SAF, actualisation et suppression d'une source, arrière-plan puis reprise, redémarrage sans réimport |
+| 0.3 | Validations sur appareil non faites au Sprint 2 | Observées sur le Xiaomi 15 et consignées : erreur de lecture puis « Réessayer », import d'un fichier SAF, actualisation et suppression d'une source, arrière-plan puis reprise, redémarrage sans réimport ; import, migration v1 → v2 et fluidité du défilement sur 50 000 chaînes (non mesurable sur l'émulateur, voir `VALIDATION.md`) |
 | 0.4 | Lecture d'un flux lent (cas 6ter : plus de 30 s en « Chargement… ») | Délai de chargement borné (environ 20 s) au-delà duquel l'erreur et « Réessayer » s'affichent, au lieu de laisser ExoPlayer réessayer indéfiniment |
 
 ## Lot 1 — Client Xtream et modèle
@@ -34,7 +34,7 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 
 - **Mot de passe chiffré** avec une clé AES-GCM de l'Android Keystore (non exportable) ; seul le texte chiffré est en base. Pas d'`EncryptedSharedPreferences`, dépréciée. Si la clé est perdue (restauration sur un autre appareil), la source passe en erreur « Identifiants à ressaisir ».
 - Sauvegarde : `allowBackup="false"` est déjà en place. Sur API 31+, il faut ajouter `dataExtractionRules` pour exclure aussi le transfert d'appareil à appareil, puisque la clé Keystore ne suit pas.
-- **Room v2 et migration 1 → 2** : colonnes Xtream sur `sources` (serveur, identifiant, mot de passe chiffré, date d'expiration du compte) ; tables `movies`, `series`, `vod_categories` (films et séries séparés des catégories TV) ; `seasons` et `episodes` en cache, remplis à la première ouverture d'une série puis rafraîchis avec la source.
+- **Room v3 et migration 2 → 3** (la v2 vient du lot 0.2) : colonnes Xtream sur `sources` (serveur, identifiant, mot de passe chiffré, date d'expiration du compte) ; tables `movies`, `series`, `vod_categories` (films et séries séparés des catégories TV) ; `seasons` et `episodes` en cache, remplis à la première ouverture d'une série puis rafraîchis avec la source.
 - Les chaînes en direct Xtream rejoignent la table `channels` existante : l'onglet TV, la recherche et les favoris fonctionnent sans changement. Identifiant stable : `xtream:{sourceId}:{stream_id}`.
 - Favoris étendus aux films et aux séries (table `favorites` réutilisée, identifiants préfixés).
 - **Reprise de lecture** : position par film et par épisode (table `progress`), mise à jour toutes les 10 s et à la sortie du lecteur.
@@ -52,7 +52,7 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 ## Lot 4 — Tests, CI et documentation
 
 - **Unitaires** : parseurs Xtream sur des réponses enregistrées et anonymisées (champs manquants, types incohérents, 30 000 films), construction des URL, messages d'erreur (aucun ne contient d'identifiant), chiffrement aller-retour, ViewModel Films et Séries avec un dépôt mémoire.
-- **Instrumentés** : migration Room 1 → 2 avec données réelles conservées ; Compose : ajout d'une source Xtream par un faux client, navigation Films → fiche → lecture, Séries → saison → épisode, reprise de lecture. Toujours aucun réseau.
+- **Instrumentés** : migration Room 2 → 3 (à la suite de 1 → 2) avec données réelles conservées ; Compose : ajout d'une source Xtream par un faux client, navigation Films → fiche → lecture, Séries → saison → épisode, reprise de lecture. Toujours aucun réseau.
 - **CI** inchangée (émulateur Pixel 2 API 35), avec la vérification du schéma exporté.
 - `README.md` et `VALIDATION.md` réécrits pour le Sprint 3 ; un commit par lot, comme au Sprint 2.
 

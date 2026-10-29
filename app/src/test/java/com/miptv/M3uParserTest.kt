@@ -103,4 +103,37 @@ class M3uParserTest {
         assertEquals(50, result.categories.size)
         assertEquals("Chaîne 24999", result.channels.last().name)
     }
+
+    /** The hand-written attribute scanner must read exactly what the former regex read. */
+    @Test fun attributeScannerMatchesTheFormerRegex() {
+        val regex = Regex("""([A-Za-z0-9_-]+)=(?:"([^"]*)"|([^\s"]+))""")
+        fun expected(attributes: String): Map<String, String> {
+            val found = mutableMapOf<String, String>()
+            for (match in regex.findAll(attributes)) {
+                val value = (match.groups[2]?.value ?: match.groups[3]?.value.orEmpty()).trim()
+                val key = match.groupValues[1].lowercase()
+                if (key in setOf("tvg-id", "tvg-name", "tvg-logo", "group-title")) found[key] = value
+            }
+            return found
+        }
+        val cases = listOf(
+            """-1 tvg-id="a" tvg-name="A B" tvg-logo="http://l/a.png" group-title="G 1"""",
+            """-1 TVG-ID=a GROUP-TITLE=Sport tvg-logo=http://l/x.png?w=1&h=2""",
+            """-1 tvg-id="" group-title=  tvg-name="x"""",
+            """-1 tvg-logo="http://l/a.png tvg-id="b" group-title="c"""",
+            """-1 tvg-id="un" tvg-id="deux" group-title=" espaces """",
+            """0 x-tvg-id="no" tvg-id=v"quoted" group-title="é à ü"""",
+            """-1 tvg-id=a\tb group-title="t\tab"""",
+            """-1 tvg-id="a"group-title="b"tvg-name="c"""",
+            """-1 =x tvg-id== group-title="=" tvg-name=a=b""",
+            "-1 tvg-id=\u00a0nbsp\u00a0 group-title=\"x\""
+        )
+        for (attributes in cases) {
+            val channel = parser.parse("#EXTINF:$attributes,Nom\nhttp://s/1\n").channels.single()
+            val want = expected(attributes)
+            assertEquals(attributes, want["tvg-id"]?.ifEmpty { null }, channel.tvgId)
+            assertEquals(attributes, want["tvg-logo"]?.ifEmpty { null }, channel.logoUrl)
+            assertEquals(attributes, want["group-title"]?.ifEmpty { null } ?: M3uParser.DEFAULT_GROUP, parser.parse("#EXTINF:$attributes,Nom\nhttp://s/1\n").categories.single().name)
+        }
+    }
 }

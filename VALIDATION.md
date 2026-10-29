@@ -1,4 +1,47 @@
-# Validation — Sprint 2 smartphone
+# Validation — smartphone
+
+## Sprint 3 — lot 0.2 : performance du catalogue (29 octobre 2026)
+
+Mesures sur une playlist générée de **50 000 chaînes** (500 groupes de 100, `tvg-id`, logo, URL), émulateur local Pixel 2 **API 35 x86_64** sur un MacBook Intel i7-1068NG7, APK **debug**. Les valeurs absolues sont pessimistes : un parsing de 100 000 lignes y prend environ 3 s, quelques centaines de millisecondes sur un ordinateur. Les comparaisons avant/après sont faites sur la même machine.
+
+### Couche données (`CatalogPerformanceTest`, 3 exécutions)
+
+| Étape | Avant (`8a99470`) | Après |
+| --- | --- | --- |
+| Parsing seul | 6,8 – 7,5 s | 2,8 – 3,1 s |
+| Import complet (`addSource`) | 20,6 – 24,6 s | 19,9 – 24,6 s |
+| Premier affichage | 4,1 – 6,7 s (tout le catalogue lu et converti) | 0,13 – 0,17 s base chaude ; jusqu'à 5,3 s juste après l'import |
+| Mémoire retenue par le catalogue | +17 Mo | aucune liste complète en mémoire |
+| Favori coché | 64 – 78 ms (catalogue entier réémis) | 19 – 29 ms (seuls la liste et le compteur « Favoris ») |
+| Filtre « Chaîne 4999 » | 107 – 114 ms (en mémoire) | 148 – 212 ms (compte SQL + première page) |
+| Changement de catégorie | 34 – 37 ms | 51 – 83 ms (compte + première page) |
+| 84 pages jusqu'à la chaîne 5 000 | — | 190 – 246 ms |
+
+- **Écriture.** L'insertion SQLite brute des 50 000 lignes (instruction compilée, une transaction) prend à elle seule 13,6 – 15 s. Elle ne bouge pas si les lignes sont triées par identifiant, avec un cache de 32 Mo ou avec `synchronous=OFF` : l'émulateur est limité par le CPU, pas par le disque. L'import n'a donc gagné que sur le parsing, dont l'expression régulière par ligne a été remplacée par une lecture manuelle des attributs. Ce gain est en partie repris par le calcul de la colonne `searchName` et par un index plus large.
+- **Plans SQLite** (`EXPLAIN QUERY PLAN`) : la première page parcourt `index_channels_sourceId_position`, une page suivante fait `SEARCH … USING INDEX index_channels_sourceId_position ((sourceId,position)>(?,?))`, et le compte sans filtre utilise un index couvrant.
+- **Pagination Room écartée.** Une première version avec la source `LIMIT/OFFSET` de `room-paging` mettait 3 à 13 s pour le premier écran, avec un `COUNT(*)` complet à chaque chargement. Elle a été remplacée par la pagination par clé.
+- **Juste après un import**, la première lecture coûte parfois jusqu'à 5 s sur l'émulateur, contre 0,15 s ensuite. La cause n'a pas été isolée (ramasse-miettes ou cache SQLite après l'écriture de 50 000 lignes) ; elle est à vérifier sur appareil.
+
+### Application (import par l'interface, `dumpsys gfxinfo`)
+
+Même playlist servie depuis le Mac (`10.0.2.2`). L'application de référence est construite depuis `8a99470`. La nouvelle version est installée par-dessus, ce qui exerce la migration v1 → v2 sur 50 000 chaînes. Les durées incluent la scrutation par `uiautomator dump`, qui ajoute 1 à 3 s.
+
+| Mesure | Avant | Après |
+| --- | --- | --- |
+| Import (toucher « Ajouter » → message) | 36,7 s | 32,2 s |
+| Premier démarrage après mise à jour (migration) | — | 14,2 s jusqu'au résumé de l'Accueil (≈ 7 s de migration) |
+| Démarrage à froid → résumé de l'Accueil | 7,1 – 7,4 s | 6,5 – 7,1 s |
+| Défilement rapide, 15 gestes sur « Toutes » | 97 – 98 % d'images saccadées, médiane 89 – 93 ms | 98 % d'images saccadées, médiane 81 – 101 ms |
+
+**La fluidité n'est pas mesurable sur cet émulateur.** Le rendu y est purement logiciel (SwiftShader via ANGLE) et l'APK est en debug, donc chaque image prend environ 90 ms dans les deux versions, même avant la 80ᵉ chaîne. La mesure du défilement est reportée au Xiaomi 15, avec la dette de validation sur appareil (lot 0.3).
+
+**Bilan des critères du lot 0.2 :**
+- chaînes chargées par pages et par catégorie : fait ;
+- un favori ne réémet plus le catalogue : fait (test `starringAChannelInvalidatesOnlyTheFavouritesList`) ;
+- temps d'import et mémoire : mesurés ;
+- défilement : non concluant sur émulateur.
+
+## Sprint 2
 
 Résultats du 28 octobre 2026, code vérifié au commit `7457edb` (lot 5 ; les commits suivants ne touchent que la documentation) :
 
@@ -15,7 +58,7 @@ Environnement local macOS (Intel), JDK 21, SDK 35, Build Tools 35.0.0. La comman
 
 Les 24 avertissements lint concernent les mises à jour de dépendances/SDK disponibles (volontairement épinglées), la configuration de sauvegarde (`allowBackup` déprécié), l'écran tactile volontairement requis et un `InputStream` fermé par l'appelant. Un premier échec lint (`ByteOrderMark`) causé par un BOM littéral dans le parseur et son test a été corrigé en l'écrivant comme séquence d'échappement `﻿`.
 
-## Lots et commits
+### Lots et commits
 
 | Lot | Commit | Contenu |
 | --- | --- | --- |
@@ -28,7 +71,7 @@ Les 24 avertissements lint concernent les mises à jour de dépendances/SDK disp
 
 Le lot 2 (parseur) a été commité avant le lot 1 parce que l'importation d'une source en dépend ; chaque commit compile et passe ses tests unitaires. Lint n'a été exécuté qu'à partir du lot 1 (le correctif `f33ea22` rend le lot 2 conforme).
 
-## Ce qui a été vérifié
+### Ce qui a été vérifié
 
 - Parseur : attributs `#EXTINF`, valeurs manquantes (repli titre → `tvg-name` → nom de fichier), lignes vides, BOM, commentaires et directives inconnues, `#EXTVLCOPT` rattaché à la chaîne suivante uniquement, CRLF, attributs sans guillemets, titres et groupes contenant des virgules, identifiants stables entre deux imports, unicité en cas de doublon, fusion des groupes insensible à la casse, 25 000 chaînes depuis un `Reader`.
 - ViewModel : catégories « Toutes »/« Favoris »/importées, repli vers « Toutes » et abandon de la sélection lorsque la catégorie ou la chaîne disparaît à l'actualisation, recherche et filtre, restauration de l'onglet/catégorie/recherche/filtre/écran Sources sans autoplay, rejet d'une chaîne falsifiée, adresse non `http(s)` refusée sans appel réseau, hôte injoignable, actualisation en échec conservant les chaînes et enregistrant l'erreur, suppression, plein écran invalide sans sélection et terminé avec elle, favoris conservés après actualisation.
@@ -39,7 +82,7 @@ Sur la CI (émulateur Pixel 2 API 35), le test `sourcesScreenAddsUrlAndRejectsIn
 
 Première exécution instrumentée : 5 échecs de mécanique de test (`performScrollTo()` sur des éléments `LazyColumn` non encore composés, clic sur un bouton hors écran, sélecteur de texte ambigu entre le champ de saisie et la fiche source), corrigés en faisant défiler la liste jusqu'à l'élément (`performScrollToNode`) et en ciblant les `testTag`. Deuxième exécution : 10/10. Pendant cette exécution, le Xiaomi 15 s'est connecté en débogage Wi-Fi et Gradle a tenté d'y installer l'APK : refus HyperOS `INSTALL_FAILED_USER_RESTRICTED` connu, sans rapport avec le code ; l'APK debug a été déposé dans `/sdcard/Download/miptv.apk` pour installation manuelle.
 
-## Validation sur téléphone physique (Xiaomi 15, HyperOS 3 / Android 16)
+### Validation sur téléphone physique (Xiaomi 15, HyperOS 3 / Android 16)
 
 Le 29 octobre 2026, APK debug du commit `3167fcc` installé depuis Téléchargements (validation manuelle de l'installateur MIUI), piloté par scripts `monkey` (touches dans la fenêtre de l'app et sur le clavier Gboard), lu par `uiautomator dump`, captures d'écran et copie de la base Room via `run-as`.
 
@@ -55,7 +98,7 @@ Le 29 octobre 2026, APK debug du commit `3167fcc` installé depuis Téléchargem
 
 Première tentative de lecture (6ter, flux `http://…:9999`) restée en « Chargement… » plus de 30 s puis remplacée par une autre chaîne : le flux répond depuis le Mac mais pas depuis le téléphone dans le délai ; ExoPlayer réessaie avant de signaler l'erreur. Le message d'erreur et le bouton « Réessayer » n'ont donc pas été observés sur appareil (couverts par les tests unitaires et instrumentés).
 
-## Limites
+### Limites
 
 - Non vérifié sur appareil : erreur de lecture et nouvel essai, import depuis un fichier SAF, actualisation et suppression d'une source, arrière-plan/reprise, playlist de plusieurs dizaines de milliers de chaînes.
 - Les tests instrumentés n'ouvrent aucun flux réseau ; la lecture réelle (HLS/TS, décodage, plein écran effectif, rotation, arrière-plan) et les logos distants nécessitent une validation manuelle avec une playlist réelle.
