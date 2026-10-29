@@ -279,7 +279,7 @@ class MemoryChannelRepository(
     override val progress: Flow<List<PlaybackProgress>> = progressFlow.asStateFlow()
     override suspend fun progress(itemId: String): PlaybackProgress? = progressFlow.value.firstOrNull { it.itemId == itemId }
     override suspend fun saveProgress(itemId: String, positionMs: Long, durationMs: Long) {
-        val entry = PlaybackProgress(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), System.currentTimeMillis())
+        val entry = PlaybackProgress(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), clock())
         progressFlow.update { list -> listOf(entry) + list.filterNot { it.itemId == itemId } }
     }
     override suspend fun clearProgress(itemId: String) { progressFlow.update { list -> list.filterNot { it.itemId == itemId } } }

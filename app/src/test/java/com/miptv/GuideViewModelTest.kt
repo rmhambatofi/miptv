@@ -15,6 +15,7 @@ import org.junit.Test
 /** The programme guide through the ViewModel: clock, « maintenant / ensuite », guide sheet, programme search, guide address. */
 class GuideViewModelTest {
     @get:Rule val dispatcher = MainDispatcherRule()
+    @get:Rule val timeZone = ParisTimeZoneRule()
     private val loader = GuideLoader().apply {
         this[GuideFixtures.PLAYLIST_URL] = GuideFixtures.PLAYLIST
         this[GuideFixtures.GUIDE_URL] = GuideFixtures.GUIDE

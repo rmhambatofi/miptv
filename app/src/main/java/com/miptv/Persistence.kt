@@ -772,7 +772,7 @@ class RoomChannelRepository(
     override val progress: Flow<List<PlaybackProgress>> = dao.progress().map { list -> list.map { it.toProgress() } }
     override suspend fun progress(itemId: String): PlaybackProgress? = dao.progressOf(itemId)?.toProgress()
     override suspend fun saveProgress(itemId: String, positionMs: Long, durationMs: Long) =
-        dao.upsertProgress(ProgressEntity(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), System.currentTimeMillis()))
+        dao.upsertProgress(ProgressEntity(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), clock()))
     override suspend fun clearProgress(itemId: String) = dao.deleteProgress(itemId)
 
     // --- Programme guide ---

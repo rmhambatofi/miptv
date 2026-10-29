@@ -152,3 +152,21 @@ class GuideLoader : PlaylistLoader {
 class TestClock(var now: Long = GuideFixtures.NOW) : () -> Long {
     override fun invoke(): Long = now
 }
+
+/** A clock that moves one millisecond forward at each reading, so two writes in a row never share a timestamp. */
+class TickingClock(private var now: Long = GuideFixtures.NOW) : () -> Long {
+    override fun invoke(): Long = ++now
+}
+
+/**
+ * The fixtures are written in Paris time (days start at 00:00 +0100). The day labels, slots and « ensuite » lines use the
+ * default time zone, so the tests that read them fix it for their duration; CI runners and emulators run in UTC.
+ */
+class ParisTimeZoneRule : org.junit.rules.ExternalResource() {
+    private var previous: java.util.TimeZone? = null
+    override fun before() {
+        previous = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Paris"))
+    }
+    override fun after() { java.util.TimeZone.setDefault(previous) }
+}

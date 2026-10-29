@@ -14,6 +14,7 @@ import org.junit.Test
 /** The programme guide through the interface: channel cards, the guide sheet, the home row, the search group and the source card. No network. */
 class GuidePhoneTest {
     @get:Rule val compose = createComposeRule()
+    @get:Rule val timeZone = ParisTimeZoneRule()
     private val loader = GuideLoader().apply {
         this[GuideFixtures.PLAYLIST_URL] = GuideFixtures.PLAYLIST
         this[GuideFixtures.GUIDE_URL] = GuideFixtures.GUIDE
