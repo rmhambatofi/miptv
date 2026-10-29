@@ -2,7 +2,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="true" />
     <application android:name=".MiptvApplication" android:label="miptv" android:icon="@drawable/ic_launcher"
-        android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="true">
+        android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules"
+        android:usesCleartextTraffic="true">
         <activity android:name=".MainActivity" android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode">
             <intent-filter>

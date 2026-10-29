@@ -61,10 +61,11 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         scrollTo("category-strip")
         compose.onNodeWithTag("category-strip").performScrollToNode(hasTestTag(model.categoryTag("bbb")))
         compose.onNodeWithTag(model.categoryTag("bbb")).assertIsDisplayed()
+        // Without an Xtream source, Films and Séries lead to the provider form.
         compose.onNodeWithTag("nav-MOVIES").performClick()
-        compose.onNodeWithText("Les lumières du Nord").assertIsDisplayed()
+        compose.onNodeWithTag("no-provider").assertIsDisplayed()
         compose.onNodeWithTag("nav-SERIES").performClick()
-        compose.onNodeWithText("Horizons").assertIsDisplayed()
+        compose.onNodeWithTag("no-provider").assertIsDisplayed()
         compose.onNodeWithTag("nav-SEARCH").performClick()
         compose.onNodeWithTag("search-input").performTextInput("unknown")
         hideKeyboard()
@@ -90,7 +91,9 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
     @Test fun sourcesScreenAddsUrlAndRejectsInvalidAddress() {
         val model = launch(withSource = false)
         compose.onNodeWithTag("open-sources").performClick()
+        scrollTo("no-sources")
         compose.onNodeWithTag("no-sources").assertIsDisplayed()
+        scrollTo("source-url")
         compose.onNodeWithTag("source-url").performTextInput("ftp://bad")
         hideKeyboard()
         compose.onNodeWithTag("add-url").performClick()

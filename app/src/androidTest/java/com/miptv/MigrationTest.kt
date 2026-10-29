@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 
 /**
  * Builds a database from the exported schema files (`app/schemas`), as a Sprint 2 install left it, then
- * migrates it step by step. Each future version adds its `runMigrationsAndValidate` step here.
+ * migrates it step by step (v1 → v2 → v3). Each future version adds its `runMigrationsAndValidate` step here.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -45,9 +45,22 @@ class MigrationTest {
             close()
         }
 
+        // v3 adds the Xtream columns (null or zero for a playlist source) and the VOD tables, empty.
+        helper.runMigrationsAndValidate(DB, 3, true, MIGRATION_2_3).apply {
+            query("SELECT username, encryptedPassword, expiresAt, movieCount, seriesCount FROM sources").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue(cursor.isNull(0)); assertTrue(cursor.isNull(1)); assertTrue(cursor.isNull(2))
+                assertEquals(0, cursor.getInt(3)); assertEquals(0, cursor.getInt(4))
+            }
+            for (table in listOf("vod_categories", "movies", "series", "seasons", "episodes", "progress")) {
+                query("SELECT COUNT(*) FROM $table").use { cursor -> cursor.moveToFirst(); assertEquals(table, 0, cursor.getInt(0)) }
+            }
+            close()
+        }
+
         // Room checks the identity hash: a schema file out of step with the entities fails here.
         val database = Room.databaseBuilder(ApplicationProvider.getApplicationContext(), MiptvDatabase::class.java, DB)
-            .addMigrations(MIGRATION_1_2).build()
+            .addMigrations(*MIGRATIONS).build()
         try {
             val repository = RoomChannelRepository(database, loader)
             assertEquals(listOf("Animation", "Cinéma"), repository.categories.first().map { it.name })
@@ -64,6 +77,11 @@ class MigrationTest {
             assertEquals(SourceKind.URL, source.kind)
             assertEquals(2, source.channelCount)
             assertNull(source.lastError)
+            assertNull(source.username)
+            assertEquals(0, source.movieCount)
+            assertTrue(repository.movieCategories.first().isEmpty())
+            assertTrue(repository.progress.first().isEmpty())
+            assertEquals(0, repository.countMovies(VodQuery()).first())
         } finally {
             database.close()
         }

@@ -106,33 +106,62 @@ class PhoneActions(
     val addUrlSource: (String, String) -> Unit,
     val addFileSource: (String, String) -> Unit,
     val refreshSource: (Long) -> Unit,
-    val removeSource: (Long) -> Unit
+    val removeSource: (Long) -> Unit,
+    val sources: SourceActions,
+    val vod: VodActions,
+    /** Turns a stored reference into the URL the player opens; null when the credentials are gone. */
+    val resolveStream: suspend (String) -> String?,
+    val saveProgress: (String, Long, Long) -> Unit,
+    val nextEpisode: () -> Episode?
 )
 
 fun LiveViewModel.actions() = PhoneActions(
-    ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::toggleFavorite, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource
+    ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::toggleFavorite, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource,
+    sources = SourceActions(::addUrlSource, ::addFileSource, ::addXtreamSource, ::checkXtreamAccount, ::clearAccountCheck, ::refreshSource, ::removeSource),
+    vod = VodActions(
+        ::movieCategory, ::movieFilter, ::seriesCategory, ::seriesFilter, ::openMovie, ::openSeries, ::closeSheet, ::selectSeason,
+        ::playMovie, { episode -> playEpisode(episode) }, ::playNextEpisode, ::stopVod, ::resume, { id -> toggleFavorite(id) }, ::fullscreen, ::openSources
+    ),
+    resolveStream = ::resolveStream,
+    saveProgress = ::saveProgress,
+    nextEpisode = ::nextEpisode
 )
 
-/** Paged channel lists, collected by the screens that show them. */
-class ChannelFeeds(val tv: Flow<PagingData<Channel>>, val search: Flow<PagingData<Channel>>, val home: Flow<PagingData<Channel>>)
+/** Paged lists, collected by the screens that show them. */
+class ChannelFeeds(
+    val tv: Flow<PagingData<Channel>>, val search: Flow<PagingData<Channel>>, val home: Flow<PagingData<Channel>>,
+    val movies: Flow<PagingData<Movie>>, val series: Flow<PagingData<Series>>,
+    val searchMovies: Flow<PagingData<Movie>>, val searchSeries: Flow<PagingData<Series>>
+)
 
-fun LiveViewModel.feeds() = ChannelFeeds(channels, searchResults, homeChannels)
+fun LiveViewModel.feeds() = ChannelFeeds(channels, searchResults, homeChannels, movies, series, searchMovies, searchSeries)
 
 /** The collected lists, passed down to the lazy sections. */
-class ChannelPages(val tv: LazyPagingItems<Channel>, val search: LazyPagingItems<Channel>, val home: LazyPagingItems<Channel>)
+class ChannelPages(
+    val tv: LazyPagingItems<Channel>, val search: LazyPagingItems<Channel>, val home: LazyPagingItems<Channel>,
+    val movies: LazyPagingItems<Movie>, val series: LazyPagingItems<Series>,
+    val searchMovies: LazyPagingItems<Movie>, val searchSeries: LazyPagingItems<Series>
+)
 
 @Composable
 fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
-    val pages = ChannelPages(feeds.tv.collectAsLazyPagingItems(), feeds.search.collectAsLazyPagingItems(), feeds.home.collectAsLazyPagingItems())
-    // Hoisted above both layouts: switching to fullscreen re-attaches the surface, never the player.
-    val playback = rememberPlayback(state.selected)
+    val pages = ChannelPages(
+        feeds.tv.collectAsLazyPagingItems(), feeds.search.collectAsLazyPagingItems(), feeds.home.collectAsLazyPagingItems(),
+        feeds.movies.collectAsLazyPagingItems(), feeds.series.collectAsLazyPagingItems(),
+        feeds.searchMovies.collectAsLazyPagingItems(), feeds.searchSeries.collectAsLazyPagingItems()
+    )
+    // Hoisted above both layouts: switching to fullscreen re-attaches the surface, never the player. One player for TV and VOD.
+    val playback = rememberPlayback(state.playItem, resolve = actions.resolveStream, onProgress = { id, position, duration -> actions.saveProgress(id, position, duration) })
+    val nextEpisode = if (state.vod != null) actions.nextEpisode() else null
     if (state.fullscreen && playback != null) {
         BackHandler { actions.fullscreen(false) }
-        FullscreenPlayer(playback) { actions.fullscreen(false) }
+        FullscreenPlayer(playback, onExit = { actions.fullscreen(false) }, onNext = if (nextEpisode != null) actions.vod.playNext else null)
         return
     }
+    val sheetOpen = !state.sourcesOpen && (state.movieSheet != null || state.seriesSheet != null)
     BackHandler(state.sourcesOpen) { actions.openSources(false) }
-    BackHandler(!state.sourcesOpen && state.destination != Destination.HOME) { actions.navigate(Destination.HOME) }
+    BackHandler(sheetOpen) { actions.vod.closeSheet() }
+    BackHandler(!state.sourcesOpen && !sheetOpen && state.destination != Destination.HOME) { actions.navigate(Destination.HOME) }
     Scaffold(bottomBar = {
         NavigationBar {
             Destination.entries.forEach { destination ->
@@ -153,7 +182,7 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
             }
         }
     }) { padding ->
-        val scrollState = key(state.destination, state.sourcesOpen) { rememberLazyListState() }
+        val scrollState = key(state.destination, state.sourcesOpen, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id) { rememberLazyListState() }
         LazyColumn(
             state = scrollState,
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding().testTag("content"),
@@ -168,20 +197,14 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                     }
                 }
             }
-            item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
+            if (!sheetOpen) item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
             when {
-                state.sourcesOpen -> sourcesSection(state, actions.addUrlSource, actions.addFileSource, actions.refreshSource, actions.removeSource)
+                state.sourcesOpen -> sourcesSection(state, actions.sources)
                 state.destination == Destination.HOME -> homeSection(state, pages.home, actions)
-                state.destination == Destination.TV -> tvSection(state, pages.tv, playback, actions)
-                state.destination == Destination.MOVIES -> {
-                    item { Text("Catalogue fictif · Les films arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(DemoContent.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
-                }
-                state.destination == Destination.SERIES -> {
-                    item { Text("Catalogue fictif · Les séries arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(DemoContent.series, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
-                }
-                else -> searchSection(state, pages.search, actions)
+                state.destination == Destination.TV -> tvSection(state, pages.tv, playback?.takeIf { state.selected != null }, actions)
+                state.destination == Destination.MOVIES -> moviesSection(state, pages.movies, playback, actions.vod)
+                state.destination == Destination.SERIES -> seriesSection(state, pages.series, playback, actions.vod, nextEpisode)
+                else -> searchSection(state, pages, actions)
             }
         }
     }
@@ -194,8 +217,11 @@ private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItem
         ).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Votre cinéma de poche", style = MaterialTheme.typography.headlineMedium)
             Text(
-                if (state.hasSources) "${state.channelCount} chaînes dans ${state.imported.size} catégories, depuis ${state.sources.size} source(s)."
-                else "Ajoutez votre playlist M3U pour retrouver vos chaînes ici."
+                when {
+                    state.hasXtream -> "${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries, depuis ${state.sources.size} source(s)."
+                    state.hasSources -> "${state.channelCount} chaînes dans ${state.imported.size} catégories, depuis ${state.sources.size} source(s)."
+                    else -> "Ajoutez votre playlist M3U ou votre fournisseur Xtream pour retrouver vos chaînes, films et séries ici."
+                }
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = { actions.navigate(Destination.TV) }) { Text("Explorer la TV") }
@@ -203,6 +229,7 @@ private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItem
             }
         }
     }
+    homeVodRows(state, actions.vod)
     if (state.hasSources) {
         item { SectionTitle("À découvrir") }
         items(minOf(10, channels.itemCount), key = channels.itemKey { "home-${it.id}" }) { index ->
@@ -232,7 +259,7 @@ private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<
                     Text("Touchez une chaîne ci-dessous pour lancer la lecture.")
                 }
             }
-        } else Preview(playback, state.isFavorite(playback.channel), actions.fullscreen) { actions.toggleFavorite(playback.channel) }
+        } else Preview(playback, state.isFavorite(playback.item.id), actions.fullscreen) { state.selected?.let(actions.toggleFavorite) }
     }
     item { SectionTitle("Catégories") }
     item {
@@ -265,22 +292,29 @@ private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<
     }
 }
 
-private fun LazyListScope.searchSection(state: LiveState, channels: LazyPagingItems<Channel>, actions: PhoneActions) {
+/** Results grouped as channels, films and series; without an Xtream source only channels are searched. */
+private fun LazyListScope.searchSection(state: LiveState, pages: ChannelPages, actions: PhoneActions) {
+    val channels = pages.search
     item {
         OutlinedTextField(value = state.query, onValueChange = actions.search,
-            label = { Text("Rechercher une chaîne") }, singleLine = true,
+            label = { Text(if (state.hasXtream) "Rechercher une chaîne, un film, une série" else "Rechercher une chaîne") }, singleLine = true,
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().testTag("search-input"))
     }
-    item { Text("Recherche locale parmi ${state.channelCount} chaînes importées.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    if (state.searchCount == 0) item { Text("Aucun résultat.") }
+    item {
+        Text(
+            if (state.hasXtream) "Recherche locale parmi ${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries."
+            else "Recherche locale parmi ${state.channelCount} chaînes importées.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    if (state.hasXtream) item { SectionTitle("Chaînes · ${state.searchCount}") }
+    if (state.searchCount == 0) item { Text(if (state.hasXtream) "Aucune chaîne." else "Aucun résultat.", color = if (state.hasXtream) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface) }
     items(channels.itemCount, key = channels.itemKey { "search-${it.id}" }) { index ->
         channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
     }
+    searchVodSections(state, pages.searchMovies, pages.searchSeries, actions.vod)
 }
-
-@Composable
-private fun SectionTitle(title: String) { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
 
 @Composable
 fun ChannelLogo(channel: Channel, modifier: Modifier = Modifier) {
@@ -326,13 +360,3 @@ private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, t
     }
 }
 
-@Composable
-private fun CatalogCard(title: String, description: String) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
