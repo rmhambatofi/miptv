@@ -71,6 +71,17 @@ Livré dans `Secrets.kt` (nouveau), `Persistence.kt`, `Sources.kt`, `Domain.kt`,
 - **Recherche** : résultats groupés Chaînes, Films, Séries.
 - `DemoContent.kt` est supprimé ; sans source Xtream, Films et Séries affichent un état vide qui mène à l'ajout d'une source.
 
+### Lot 3 — réalisé (29 octobre 2026)
+
+Livré dans `LiveViewModel.kt`, `Preview.kt`, `MainActivity.kt`, `SourcesScreen.kt`, `VodScreens.kt` (nouveau) ; `DemoContent.kt` supprimé. Décisions prises en cours de route :
+
+- **Un seul lecteur, un seul type** : `PlayItem` (chaîne, film ou épisode) porte la référence de flux et la position de reprise ; `rememberPlayback(item, resolve, onProgress)` résout l'URL dans un `LaunchedEffect` au démarrage et à chaque « Réessayer », si bien que l'URL avec identifiants ne vit que dans ExoPlayer. `state.selected` (TV) et `state.vod` (film ou épisode) s'excluent ; changer d'onglet, de fiche ou ouvrir Sources arrête tout, comme au Sprint 2.
+- **Fiches dans l'onglet** plutôt qu'en feuille modale : la fiche film ou série remplace la grille dans la même `LazyColumn`, Retour la ferme (et arrête la lecture), les tests Compose la parcourent par défilement. Le lecteur VOD s'affiche en tête de fiche ; « Épisode suivant » y figure et apparaît aussi en plein écran à la fin.
+- **Grille d'affiches en rangées de trois** dans la `LazyColumn` paginée (une `LazyVerticalGrid` imbriquée n'est pas défilable) ; chaque rangée lit ses trois entrées dans `LazyPagingItems`.
+- **Test de connexion** : `ChannelRepository.checkXtreamAccount` (statut, date de fin, connexions, formats) ; l'ajout refait la vérification puis importe, donc un compte expiré ou refusé n'est jamais enregistré.
+- **Reprise** : le lecteur rapporte la position toutes les 10 s, à la fin (position = durée, donc « Vu ») et à la fermeture ; au-delà de 95 % plus de proposition de reprise. La rangée « Reprendre » retrouve film ou épisode et série depuis l'identifiant et rouvre la fiche à la bonne saison.
+- **Icônes** : `material-icons-core` seulement, d'où un bouton texte « Afficher / Masquer » pour le mot de passe.
+
 ## Lot 4 — Tests, CI et documentation
 
 - **Unitaires** : parseurs Xtream sur des réponses enregistrées et anonymisées (champs manquants, types incohérents, 30 000 films), construction des URL, messages d'erreur (aucun ne contient d'identifiant), chiffrement aller-retour, ViewModel Films et Séries avec un dépôt mémoire.

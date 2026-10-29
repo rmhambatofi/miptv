@@ -175,6 +175,8 @@ interface ChannelRepository {
     fun count(query: ChannelQuery): Flow<Int>
     suspend fun channel(id: String): Channel?
     suspend fun addSource(name: String, location: String, kind: SourceKind): ImportResult
+    /** Connection test before saving: the account as the provider describes it, or the French reason it cannot be used. */
+    suspend fun checkXtreamAccount(account: XtreamAccount): Fetched<XtreamAccountInfo>
     /** Checks the account, imports live channels, films and series; the password is stored encrypted. */
     suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult
     suspend fun refreshSource(id: Long): ImportResult

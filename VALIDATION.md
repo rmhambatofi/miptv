@@ -132,6 +132,17 @@ Toujours sans réseau ni compte : faux client Xtream (`FakeXtreamClient`, répon
 
 Non vérifié ici : le Keystore réel (clé matérielle, perte après restauration) et l'exclusion effective du transfert d'appareil à appareil, qui demandent un appareil et un compte ; prévus avec la validation du lot 3 sur le Xiaomi 15.
 
+## Sprint 3 — lot 3 : interface Xtream, Films, Séries, lecteur VOD (29 octobre 2026)
+
+Sans réseau ni compte : faux client Xtream et dépôt mémoire derrière la vraie interface Compose.
+
+- Unitaires : **80/80** (6 nouveaux dans `XtreamViewModelTest`, 8 au total : ajout, formulaire incomplet ou refusé, test de connexion, catégories et filtres restaurés, fiche film et reprise, fiche série avec saisons et « Épisode suivant », recherche groupée, lecteur unique et fermeture des fiches avec leur source).
+- Instrumentés : **26/26** sur l'émulateur Pixel 2 API 35 (`CatalogPerformanceTest` ignoré sans `-e perf true`), dont 4 `XtreamPhoneTest` : formulaire Xtream avec test de connexion refusé puis accepté, ajout et fiche source (expiration), mot de passe absent de l'écran ; grille Films → fiche (synopsis, durée) → « Lire » → lecteur → plein écran → fermeture ; fiche Séries → saison 2 → saison 1 → épisode → « Épisode suivant » ; rangée « Reprendre » de l'Accueil → fiche avec « Reprendre à 42 min ». Première passe : un échec dans un test du Sprint 2 (« Aucune source » passé sous le pli par le nouveau choix M3U / Xtream) ; défilement ajouté, 6/6 à la relance.
+- Incident de développement : une première version des tests ViewModel lisait les listes paginées `cachedIn` du ViewModel sous `runBlocking`, ce qui bloque avec le `StandardTestDispatcher` ; les tests lisent désormais le dépôt pour les requêtes du modèle, comme ceux du Sprint 2.
+- Lint : **28 avertissements**, aucun nouveau, aucune erreur. Schéma Room inchangé (v3).
+
+Non vérifié ici, à faire sur le Xiaomi 15 avec un compte de test : lecture réelle d'un film et d'un épisode Xtream (résolution de l'URL, saut ±10 s, reprise après fermeture), « Épisode suivant » à la fin réelle d'un épisode, affiches Coil sur un vrai catalogue, Keystore réel, fluidité des grilles sur plusieurs milliers de films.
+
 ## Sprint 2
 
 Résultats du 28 octobre 2026, code vérifié au commit `7457edb` (lot 5 ; les commits suivants ne touchent que la documentation) :

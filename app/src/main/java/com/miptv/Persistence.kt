@@ -529,6 +529,8 @@ class RoomChannelRepository(
         }
     }
 
+    override suspend fun checkXtreamAccount(account: XtreamAccount): Fetched<XtreamAccountInfo> = xtream.check(account)
+
     override suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult = mutex.withLock {
         val server = normalizeXtreamServer(account.server)
         if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return ImportResult.Failure("Serveur, identifiant et mot de passe sont requis.")

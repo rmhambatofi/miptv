@@ -575,6 +575,18 @@ class HttpXtreamClient : XtreamClient {
     }
 }
 
+/** Normalises the account and asks the provider about it; a blocked account (expired, disabled) is a failure. */
+suspend fun XtreamClient.check(account: XtreamAccount): Fetched<XtreamAccountInfo> {
+    val server = normalizeXtreamServer(account.server)
+    if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return Fetched.Failure("Serveur, identifiant et mot de passe sont requis.")
+    return try {
+        val info = account(account.copy(server = server, username = account.username.trim()))
+        info.blocker()?.let { Fetched.Failure(it) } ?: Fetched.Success(info)
+    } catch (error: Exception) {
+        Fetched.Failure(describeXtreamError(error))
+    }
+}
+
 /** French message for a failed provider call. Never echoes the server, the user name or the password. */
 fun describeXtreamError(error: Throwable): String = when (error) {
     is XtreamException -> error.message ?: XtreamParser.UNEXPECTED
