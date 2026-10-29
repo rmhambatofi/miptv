@@ -95,7 +95,7 @@ Livré dans `GuideScreens.kt` (nouveau), `LiveViewModel.kt`, `MainActivity.kt`, 
 | 3 — Interface | `2563114` | fait |
 | 4 — Tests et documentation | ce commit | fait |
 
-Validation sur le Xiaomi 15 faite le 29 octobre 2026 : 10 scénarios sur 14 vérifiés par adb, 3 rapportés par l'utilisateur, 1 non observé (erreur de guide), purge à constater le lendemain ; un constat à traiter (programmes orphelins conservés). Reste : corriger les orphelins, puis PR vers `main` une fois la PR #9 (workflow CI) fusionnée.
+Validation sur le Xiaomi 15 faite le 29 octobre 2026 : 10 scénarios sur 14 vérifiés par adb, 3 rapportés par l'utilisateur, 1 non observé (erreur de guide), purge à constater le lendemain ; un constat à traiter (programmes orphelins conservés). Orphelins corrigés après la validation (suppression après rattachement, scénarios partagés mis à jour). Reste : PR vers `main` une fois la PR #9 (workflow CI) fusionnée.
 
 ## Ordre
 

@@ -32,7 +32,8 @@ class EpgRepositoryTest {
 
     @Test fun playlistGuideIsImportedAndJoined() = runBlocking {
         EpgScenarios.playlistGuideIsImportedAndJoined(repository, loader)
-        assertEquals(10, count("SELECT COUNT(*) FROM programmes WHERE sourceId = 1"))
+        assertEquals(9, count("SELECT COUNT(*) FROM programmes WHERE sourceId = 1"))
+        assertEquals(0, count("SELECT COUNT(*) FROM programmes WHERE channelKey = 'unknown.fr'"))
         assertEquals(0, count("SELECT COUNT(*) FROM programmes WHERE sourceId < 0"))
         // Keys: tvg-id kept, name match for France 2 and Arte, bare tvg-id for M6, none for the local channel.
         assertEquals(1, count("SELECT COUNT(*) FROM channels WHERE name = 'France 2' AND epgKey = 'f2.fr'"))

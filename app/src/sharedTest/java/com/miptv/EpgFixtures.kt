@@ -113,7 +113,7 @@ http://stream.example/locale.ts
 http://stream.example/tf1-bis.ts
 """
 
-    /** Ten programmes fall in the window; one is too old, one too far, one belongs to no channel of the playlist. */
+    /** Ten programmes fall in the window (one of them for a channel absent from the playlist, dropped after matching); one is too old, one too far. */
     const val GUIDE = """<?xml version="1.0" encoding="UTF-8"?>
 <tv>
   <channel id="tf1.fr"><display-name>TF1</display-name></channel>

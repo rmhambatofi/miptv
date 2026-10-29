@@ -26,7 +26,7 @@ Les 14 scénarios ont été joués par l'utilisateur avec la playlist iptv-org, 
 - **1 scénario non observé** : l'erreur de guide (8) n'a laissé ni message ni `epgError` ; à rejouer avec une adresse `http://` fausse ;
 - **non mesurés** : les durées d'import (aucun journal applicatif, chrono de l'utilisateur non reporté) et la purge à 12 h, à constater demain.
 
-Constat principal : les programmes des chaînes du guide absentes de la playlist sont conservés pour rien (38 311 sur 39 607, ≈ 13 Mo) ; correction simple décrite dans « Constats à traiter ».
+Constat principal : les programmes des chaînes du guide absentes de la playlist étaient conservés pour rien (38 311 sur 39 607, ≈ 13 Mo) ; corrigé juste après (voir « Constats à traiter »).
 
 ### Scénarios à jouer sur le Xiaomi 15
 
@@ -51,7 +51,7 @@ APK debug 0.4.0 du commit `17ae30d` déposé le 29 octobre 2026 à 21:38 dans T�
 
 ### Constats à traiter
 
-- **Programmes orphelins conservés** : pour une playlist, l'import garde tous les programmes de la fenêtre, y compris ceux des chaînes du guide qu'aucune chaîne de la playlist ne désigne (38 311 sur 39 607 avec iptv-org et le guide XML TV Fr, soit ≈ 13 Mo). Ils ne servent ni à l'affichage ni à la recherche (jointure sur `epgKey`). Amélioration simple : après le rattachement des clés, supprimer les programmes de la source dont la clé ne correspond à aucune chaîne, ou passer le filtre de chaînes au parseur une fois les clés connues (deux passes). À faire avant la PR ou au sprint suivant.
+- **Programmes orphelins conservés** : pour une playlist, l'import garde tous les programmes de la fenêtre, y compris ceux des chaînes du guide qu'aucune chaîne de la playlist ne désigne (38 311 sur 39 607 avec iptv-org et le guide XML TV Fr, soit ≈ 13 Mo). Ils ne servaient ni à l'affichage ni à la recherche (jointure sur `epgKey`). **Corrigé après la validation** : les deux dépôts suppriment, après le rattachement des clés, les programmes de la source qu'aucune chaîne ne désigne (`deleteOrphanProgrammes`) ; le scénario partagé attend désormais 9 programmes rattachés au lieu de 10, et `programmeCount` compte ce qui est affichable. Avec iptv-org et le guide XML TV Fr, la base ne gardera que les 1 296 programmes des 13 chaînes couvertes ; à constater à la prochaine actualisation du guide sur le Xiaomi.
 
 ## Sprint 4 — lot 1 : parseurs XMLTV et EPG court (29 octobre 2026)
 

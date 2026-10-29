@@ -318,6 +318,9 @@ interface CatalogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertProgrammes(rows: List<ProgrammeEntity>)
     @Query("DELETE FROM programmes WHERE sourceId = :sourceId") suspend fun deleteProgrammes(sourceId: Long)
     @Query("UPDATE programmes SET sourceId = :to WHERE sourceId = :from") suspend fun moveProgrammes(from: Long, to: Long)
+    /** Programmes of guide channels no channel of the source designates: unreachable by any join, so dropped. */
+    @Query("DELETE FROM programmes WHERE sourceId = :sourceId AND channelKey NOT IN (SELECT epgKey FROM channels WHERE sourceId = :sourceId AND epgKey IS NOT NULL)")
+    suspend fun deleteOrphanProgrammes(sourceId: Long)
     @Query("DELETE FROM programmes WHERE stopMs < :beforeMs") suspend fun purgeProgrammes(beforeMs: Long)
     @Query("SELECT COUNT(*) FROM programmes WHERE sourceId = :sourceId") suspend fun countProgrammes(sourceId: Long): Int
     @Query("SELECT id, name, tvgId, epgKey FROM channels WHERE sourceId = :sourceId") suspend fun channelKeys(sourceId: Long): List<ChannelKeyRow>
@@ -836,7 +839,11 @@ class RoomChannelRepository(
             }
             database.withTransaction {
                 dao.commitProgrammes(sourceId)
-                if (!xtreamSource) matchGuideKeys(sourceId, result.channels)
+                if (!xtreamSource) {
+                    matchGuideKeys(sourceId, result.channels)
+                    // A public guide covers far more channels than a playlist: keep only what a channel can show.
+                    dao.deleteOrphanProgrammes(sourceId)
+                }
                 dao.purgeProgrammes(now - EpgWindow.PURGE_AFTER_MS)
                 dao.updateSource(entity.copy(epgRefreshedAt = now, epgError = null, programmeCount = dao.countProgrammes(sourceId)))
             }

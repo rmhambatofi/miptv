@@ -109,7 +109,7 @@ class GuidePhoneTest {
         compose.onNodeWithTag("open-sources").performClick()
         scrollTo("epg-url-1")
         compose.onNodeWithTag("epg-url-1").assertTextContains(GuideFixtures.GUIDE_URL, substring = true)
-        compose.onNodeWithTag("epg-status-1").assertTextContains("10 programmes", substring = true)
+        compose.onNodeWithTag("epg-status-1").assertTextContains("9 programmes", substring = true)
         compose.onNodeWithTag("epg-url-1").performTextReplacement(GuideFixtures.GUIDE2_URL)
         Espresso.closeSoftKeyboard()
         scrollTo("save-epg-1")

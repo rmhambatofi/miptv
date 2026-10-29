@@ -21,7 +21,7 @@ object EpgScenarios {
         val source = (repository.addSource("France", GuideFixtures.PLAYLIST_URL, SourceKind.URL) as ImportResult.Success).source
         assertEquals(GuideFixtures.GUIDE_URL, source.epgUrl)
         assertTrue(source.hasGuide)
-        assertEquals(10, source.programmeCount)
+        assertEquals(9, source.programmeCount) // the orphan of "unknown.fr" is dropped
         assertEquals(GuideFixtures.NOW, source.epgRefreshedAt)
         assertNull(source.epgError)
         assertEquals(source, repository.sources.first().single())
@@ -77,7 +77,7 @@ object EpgScenarios {
         var source = repository.sources.first().single()
         assertEquals(GuideFixtures.DOWN_URL, source.epgUrl)
         assertEquals("Hôte introuvable. Vérifiez l'adresse et la connexion.", source.epgError)
-        assertEquals(10, source.programmeCount)
+        assertEquals(9, source.programmeCount)
         assertEquals(GuideFixtures.NOW, source.epgRefreshedAt)
         assertEquals(4, repository.nowAndNext(GuideFixtures.NOW).first().size)
 

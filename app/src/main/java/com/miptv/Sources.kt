@@ -348,6 +348,7 @@ class MemoryChannelRepository(
             val programmes = ArrayList<Programme>()
             val parser = XmltvParser(sourceId, fromMs = now - EpgWindow.BEFORE_MS, toMs = now + EpgWindow.AFTER_MS, channelFilter = filter)
             val result = loader.open(location, SourceKind.URL).use { input -> parser.parse(input) { programmes += it } }
+            var kept: List<Programme> = programmes
             if (source.kind != SourceKind.XTREAM) {
                 val guideIds = result.channels.mapTo(HashSet()) { it.id }
                 val byName = guideNameIndex(result.channels)
@@ -355,8 +356,11 @@ class MemoryChannelRepository(
                     val key = guideKey(channel.tvgId, channel.name, guideIds, byName)
                     if (key != null && key != channel.tvgId) guideKeys[channel.id] = key else guideKeys.remove(channel.id)
                 }
+                // Same as Room: programmes no channel of the playlist can show are dropped.
+                val keys = channels.mapNotNullTo(HashSet()) { keyOf(it) }
+                kept = programmes.filter { it.channelKey in keys }
             }
-            guides[sourceId] = programmes
+            guides[sourceId] = kept
             purge(now)
             updateSource(sourceId) { it.copy(epgRefreshedAt = now, epgError = null, programmeCount = guides[sourceId]?.size ?: 0) }
             guideVersion.update { it + 1 }
