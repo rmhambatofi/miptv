@@ -28,11 +28,16 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 /** One ExoPlayer for one channel. Status text and error flag drive the UI; [retry] re-prepares. */
 class Playback(val channel: Channel, val player: ExoPlayer) {
     var status by mutableStateOf("Chargement…")
     var failed by mutableStateOf(false)
+    fun fail(message: String) {
+        failed = true
+        status = message
+    }
     fun retry() {
         failed = false
         status = "Chargement…"
@@ -42,13 +47,31 @@ class Playback(val channel: Channel, val player: ExoPlayer) {
     }
 }
 
+/** How long a stream may keep loading, while playback is wanted, before the error and "Réessayer" show. */
+const val LOADING_LIMIT_MS = 20_000L
+
+const val LOADING_TIMEOUT_MESSAGE = "Le flux ne répond pas après 20 secondes."
+
+/**
+ * Measures how long the player has been loading while playback is wanted. Media3 retries network errors on
+ * its own and a server that accepts the connection but sends nothing keeps it buffering for ever; this bounds
+ * both, at start and when a live stream stalls. A pause (for instance in the background) stops the clock.
+ */
+class LoadingWatch(private val limitMs: Long = LOADING_LIMIT_MS) {
+    private var since: Long? = null
+    fun update(loading: Boolean, nowMs: Long) {
+        since = if (loading) since ?: nowMs else null
+    }
+    fun expired(nowMs: Long): Boolean = since?.let { nowMs - it >= limitMs } ?: false
+}
+
 /**
  * Hoisted player state: created when a channel is selected, released when the selection changes or
  * disappears, paused when the activity stops. Keeping it above the layout means entering fullscreen
  * only re-attaches the surface instead of recreating the player.
  */
 @Composable
-fun rememberPlayback(channel: Channel?): Playback? {
+fun rememberPlayback(channel: Channel?, loadingLimitMs: Long = LOADING_LIMIT_MS): Playback? {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val playback = remember(channel?.id) { channel?.let { Playback(it, buildPlayer(context, it)) } }
@@ -73,8 +96,7 @@ fun rememberPlayback(channel: Channel?): Playback? {
                     player.prepare()
                     return
                 }
-                playback.failed = true
-                playback.status = describePlaybackError(error)
+                playback.fail(describePlaybackError(error))
             }
         }
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) player.pause() }
@@ -87,6 +109,22 @@ fun rememberPlayback(channel: Channel?): Playback? {
             owner.lifecycle.removeObserver(observer)
             player.removeListener(listener)
             player.release()
+        }
+    }
+    LaunchedEffect(playback) {
+        if (playback == null) return@LaunchedEffect
+        val watch = LoadingWatch(loadingLimitMs)
+        while (true) {
+            val player = playback.player
+            val now = System.currentTimeMillis()
+            watch.update(!playback.failed && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING, now)
+            if (watch.expired(now)) {
+                // stop() abandons Media3's own retries; the listener keeps the message while the player is idle.
+                playback.fail(LOADING_TIMEOUT_MESSAGE)
+                player.stop()
+                watch.update(false, now)
+            }
+            delay(500)
         }
     }
     return playback

@@ -38,7 +38,8 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
                     pending = null
                     val name = entry.name.ifEmpty { entry.tvgName.ifEmpty { fallbackName(line) } }
                     val groupName = entry.group.ifEmpty { DEFAULT_GROUP }
-                    val category = categories.getOrPut(categoryId(groupName)) { Category(categoryId(groupName), groupName) }
+                    val categoryId = categoryId(groupName)
+                    val category = categories.getOrPut(categoryId) { Category(categoryId, groupName) }
                     val key = entry.tvgId.ifEmpty { "$groupName/$name" }
                     var id = channelId(key)
                     var suffix = 1
@@ -83,9 +84,8 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
         }
         val attributes = if (titleStart >= 0) body.substring(0, titleStart) else body
         entry.name = if (titleStart >= 0) body.substring(titleStart + 1).trim() else ""
-        for (match in ATTRIBUTE.findAll(attributes)) {
-            val value = (match.groups[2]?.value ?: match.groups[3]?.value.orEmpty()).trim()
-            when (match.groupValues[1].lowercase()) {
+        forEachAttribute(attributes) { key, value ->
+            when (key.lowercase()) {
                 "tvg-id" -> entry.tvgId = value
                 "tvg-name" -> entry.tvgName = value
                 "tvg-logo" -> entry.logo = value
@@ -94,6 +94,38 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
         }
         return entry
     }
+
+    /**
+     * `key="value"` or `key=value` pairs, keys made of letters, digits, `_` and `-`. Hand-written: a regex per
+     * line dominated the import time of large playlists on Android. A pair with an unclosed quote is skipped.
+     */
+    private inline fun forEachAttribute(text: String, action: (String, String) -> Unit) {
+        var i = 0
+        val n = text.length
+        while (i < n) {
+            if (!isKeyChar(text[i])) { i++; continue }
+            val keyStart = i
+            while (i < n && isKeyChar(text[i])) i++
+            if (i >= n || text[i] != '=') continue
+            val key = text.substring(keyStart, i)
+            i++ // '='
+            if (i < n && text[i] == '"') {
+                val close = text.indexOf('"', i + 1)
+                if (close < 0) { i++; continue }
+                action(key, text.substring(i + 1, close).trim())
+                i = close + 1
+            } else {
+                val valueStart = i
+                while (i < n && !isAsciiSpace(text[i]) && text[i] != '"') i++
+                if (i > valueStart) action(key, text.substring(valueStart, i).trim())
+            }
+        }
+    }
+
+    /** Same set as the regex `\s` the scanner replaced. */
+    private fun isAsciiSpace(c: Char) = c == ' ' || c == '\t' || c == '\n' || c == '\u000B' || c == '\u000C' || c == '\r'
+
+    private fun isKeyChar(c: Char) = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_' || c == '-'
 
     private fun applyVlcOption(entry: Entry, line: String) {
         val option = line.substringAfter(':', "")
@@ -124,6 +156,5 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
 
     companion object {
         const val DEFAULT_GROUP = "Sans catégorie"
-        private val ATTRIBUTE = Regex("""([A-Za-z0-9_-]+)=(?:"([^"]*)"|([^\s"]+))""")
     }
 }

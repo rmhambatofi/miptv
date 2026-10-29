@@ -24,13 +24,14 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
             if (location == "https://demo.example/list.m3u") playlist.byteInputStream() else throw java.net.UnknownHostException()
     }
 
+    private val repository = MemoryChannelRepository(loader)
+
     private fun launch(withSource: Boolean = true): LiveViewModel {
-        val repository = MemoryChannelRepository(loader)
         if (withSource) runBlocking { repository.addSource("Démo", "https://demo.example/list.m3u", SourceKind.URL) }
         val model = LiveViewModel(repository)
         compose.setContent {
             val state by model.state.collectAsState()
-            MiptvTheme { PhoneApp(state, model.actions()) }
+            MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
         }
         return model
     }
@@ -49,8 +50,9 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag(tag).performClick()
     }
 
-    private fun LiveViewModel.channelTag(tvgId: String) = "channel-" + state.value.catalog.channels.first { it.tvgId == tvgId }.id
-    private fun LiveViewModel.categoryTag(tvgId: String) = "category-" + state.value.catalog.channels.first { it.tvgId == tvgId }.categoryId
+    private fun channel(tvgId: String) = runBlocking { repository.list().first { it.tvgId == tvgId } }
+    private fun LiveViewModel.channelTag(tvgId: String) = "channel-" + channel(tvgId).id
+    private fun LiveViewModel.categoryTag(tvgId: String) = "category-" + channel(tvgId).categoryId
 
     @Test fun bottomBarOpensAllFiveDestinations() {
         val model = launch()
@@ -153,10 +155,10 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         scrollTo("empty-category")
         compose.onNodeWithTag("empty-category").assertIsDisplayed()
         chip("category-all")
-        val star = "favorite-" + model.state.value.catalog.channels.first { it.tvgId == "sintel" }.id
+        val star = "favorite-" + channel("sintel").id
         scrollTo(star)
         compose.onNodeWithTag(star).performClick()
-        compose.waitUntil(5_000) { model.state.value.catalog.favorites.size == 1 }
+        compose.waitUntil(5_000) { model.state.value.favoriteIds.size == 1 }
         chip("category-favorites")
         scrollTo(model.channelTag("sintel"))
         compose.onNodeWithTag(model.channelTag("sintel")).assertIsDisplayed()

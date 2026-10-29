@@ -2,6 +2,9 @@ package com.miptv
 
 import android.content.Context
 import androidx.core.net.toUri
+import androidx.paging.LoadState
+import androidx.paging.LoadStates
+import androidx.paging.PagingData
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -14,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -80,7 +85,7 @@ fun describeImportError(error: Throwable): String = when (error) {
 
 /**
  * In-memory implementation: sources and catalog live for the process only. Used by tests and as the
- * reference behaviour for the persistent implementation.
+ * reference behaviour for the persistent implementation. Lists are filtered in memory and served as one page.
  */
 class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepository {
     private val mutex = Mutex()
@@ -88,9 +93,22 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
     private val favorites = LinkedHashSet<String>()
     private var nextId = 1L
     private val sourcesFlow = MutableStateFlow<List<Source>>(emptyList())
-    private val catalogFlow = MutableStateFlow(Catalog.EMPTY)
-    override val catalog: Flow<Catalog> = catalogFlow.asStateFlow()
+    private class Snapshot(val categories: List<Category>, val channels: List<Channel>, val favorites: Set<String>)
+    private val snapshot = MutableStateFlow(Snapshot(emptyList(), emptyList(), emptySet()))
+    override val categories: Flow<List<Category>> = snapshot.map { it.categories }.distinctUntilChanged()
+    override val favoriteIds: Flow<Set<String>> = snapshot.map { it.favorites }.distinctUntilChanged()
     override val sources: Flow<List<Source>> = sourcesFlow.asStateFlow()
+
+    override fun channels(query: ChannelQuery): Flow<PagingData<Channel>> =
+        snapshot.map { s -> s.channels.filter { query.matches(it, s.favorites) } }.distinctUntilChanged().map { PagingData.from(it, COMPLETE) }
+
+    /** One page holding the whole list: nothing more to load at either end. */
+    private val COMPLETE = LoadStates(LoadState.NotLoading(false), LoadState.NotLoading(true), LoadState.NotLoading(true))
+
+    override fun count(query: ChannelQuery): Flow<Int> =
+        snapshot.map { s -> s.channels.count { query.matches(it, s.favorites) } }.distinctUntilChanged()
+
+    override suspend fun channel(id: String): Channel? = snapshot.value.channels.firstOrNull { it.id == id }
 
     override suspend fun addSource(name: String, location: String, kind: SourceKind): ImportResult = mutex.withLock {
         val source = Source(nextId, name, location, kind)
@@ -119,6 +137,9 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
         playlists.remove(id)
         sourcesFlow.update { list -> list.filterNot { it.id == id } }
         publish()
+        // Like the Room implementation: favourites of removed channels go, those of a refreshed source stay.
+        val remaining = snapshot.value.channels.mapTo(HashSet()) { it.id }
+        if (favorites.retainAll(remaining)) publish()
     }
 
     override suspend fun setFavorite(channelId: String, favorite: Boolean) = mutex.withLock {
@@ -143,8 +164,8 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
         for (id in sourcesFlow.value.map { it.id }) {
             val parsed = playlists[id] ?: continue
             parsed.categories.forEach { categories.putIfAbsent(it.id, it) }
-            parsed.channels.mapTo(channels) { if (it.id in favorites) it.copy(favorite = true) else it }
+            channels += parsed.channels
         }
-        catalogFlow.value = Catalog(categories.values.toList(), channels)
+        snapshot.value = Snapshot(categories.values.toList(), channels, favorites.toSet())
     }
 }

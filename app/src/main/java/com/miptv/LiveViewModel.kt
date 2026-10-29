@@ -3,8 +3,15 @@ package com.miptv
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -13,9 +20,11 @@ enum class Destination(val label: String) { HOME("Accueil"), TV("TV"), MOVIES("F
 data class ImportStatus(val running: Boolean = false, val message: String? = null, val error: Boolean = false)
 
 data class LiveState(
-    val catalog: Catalog = Catalog.EMPTY,
+    /** Imported categories; [categories] adds the pseudo-categories. */
+    val imported: List<Category> = emptyList(),
+    val favoriteIds: Set<String> = emptySet(),
     val sources: List<Source> = emptyList(),
-    /** False until the stored catalog has been read once; avoids flashing the "no source" screen. */
+    /** False until the stored sources have been read once; avoids flashing the "no source" screen. */
     val ready: Boolean = false,
     val categoryId: String = Category.ALL.id,
     val selected: Channel? = null,
@@ -26,20 +35,18 @@ data class LiveState(
     val sourcesOpen: Boolean = false,
     /** Only meaningful with a selection; cleared whenever the selection is cleared. */
     val fullscreen: Boolean = false,
-    val importStatus: ImportStatus = ImportStatus()
+    val importStatus: ImportStatus = ImportStatus(),
+    val channelCount: Int = 0,
+    /** Size of the TV list ([channelQuery]) and of the search results ([searchQuery]). */
+    val visibleCount: Int = 0,
+    val searchCount: Int = 0
 ) {
-    val categories: List<Category> get() = listOf(Category.ALL, Category.FAVORITES) + catalog.categories
+    val categories: List<Category> get() = listOf(Category.ALL, Category.FAVORITES) + imported
     val hasSources: Boolean get() = sources.isNotEmpty()
     val categoryNames: Map<String, String> by lazy { categories.associate { it.id to it.name } }
-    val visibleChannels: List<Channel> by lazy {
-        val needle = filter.trim()
-        val inCategory = catalog.channelsIn(categoryId)
-        if (needle.isEmpty()) inCategory else inCategory.filter { it.name.contains(needle, ignoreCase = true) }
-    }
-    val searchChannels: List<Channel> by lazy {
-        val needle = query.trim()
-        if (needle.isEmpty()) catalog.channels else catalog.channels.filter { it.name.contains(needle, ignoreCase = true) }
-    }
+    val channelQuery: ChannelQuery get() = ChannelQuery(categoryId, filter.trim())
+    val searchQuery: ChannelQuery get() = ChannelQuery(text = query.trim())
+    fun isFavorite(channel: Channel): Boolean = channel.id in favoriteIds
 }
 
 class LiveViewModel(
@@ -55,19 +62,52 @@ class LiveViewModel(
     ))
     val state = mutable.asStateFlow()
 
+    /** Paged lists for the TV tab, the search tab and the home preview; they follow the state's queries. */
+    val channels: Flow<PagingData<Channel>> = paged { it.channelQuery }
+    val searchResults: Flow<PagingData<Channel>> = paged { it.searchQuery }
+    val homeChannels: Flow<PagingData<Channel>> = repository.channels(ChannelQuery()).cachedIn(viewModelScope)
+
     init {
-        viewModelScope.launch { repository.catalog.collect { catalog -> mutable.update { it.withCatalog(catalog) } } }
-        viewModelScope.launch { repository.sources.collect { sources -> mutable.update { it.copy(sources = sources) } } }
+        viewModelScope.launch { repository.categories.collect { categories -> mutable.update { it.withCategories(categories) } } }
+        viewModelScope.launch { repository.favoriteIds.collect { ids -> mutable.update { it.copy(favoriteIds = ids) } } }
+        viewModelScope.launch {
+            repository.sources.collect { sources ->
+                mutable.update { it.copy(sources = sources, ready = true) }
+                // Every import or removal touches the sources: re-read the playing channel, which may be gone or renamed.
+                revalidateSelection()
+            }
+        }
+        counted({ ChannelQuery() }) { state, n -> state.copy(channelCount = n) }
+        counted({ it.channelQuery }) { state, n -> state.copy(visibleCount = n) }
+        counted({ it.searchQuery }) { state, n -> state.copy(searchCount = n) }
     }
 
-    private fun LiveState.withCatalog(catalog: Catalog): LiveState {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun paged(query: (LiveState) -> ChannelQuery): Flow<PagingData<Channel>> =
+        mutable.map(query).distinctUntilChanged().flatMapLatest { repository.channels(it) }.cachedIn(viewModelScope)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun counted(query: (LiveState) -> ChannelQuery, apply: (LiveState, Int) -> LiveState) {
+        viewModelScope.launch {
+            mutable.map(query).distinctUntilChanged().flatMapLatest { repository.count(it) }.distinctUntilChanged()
+                .collect { n -> mutable.update { apply(it, n) } }
+        }
+    }
+
+    private fun LiveState.withCategories(imported: List<Category>): LiveState {
         // No SavedStateHandle write here: collectors may run off the main thread, and an unknown saved category is re-validated on restore.
-        val categoryId = if (categories(catalog).any { it.id == categoryId }) categoryId else Category.ALL.id
-        val selected = selected?.let { current -> catalog.channels.firstOrNull { it.id == current.id } }
-        return copy(catalog = catalog, categoryId = categoryId, selected = selected, fullscreen = fullscreen && selected != null, ready = true)
+        val known = categoryId == Category.ALL.id || categoryId == Category.FAVORITES.id || imported.any { it.id == categoryId }
+        return copy(imported = imported, categoryId = if (known) categoryId else Category.ALL.id)
     }
 
-    private fun categories(catalog: Catalog) = listOf(Category.ALL, Category.FAVORITES) + catalog.categories
+    private suspend fun revalidateSelection() {
+        val current = mutable.value.selected ?: return
+        val fresh = repository.channel(current.id)
+        mutable.update { state ->
+            if (state.selected?.id != current.id) state
+            else state.copy(selected = fresh, fullscreen = state.fullscreen && fresh != null)
+        }
+    }
 
     fun navigate(destination: Destination) {
         saved["destination"] = destination.name
@@ -83,14 +123,18 @@ class LiveViewModel(
     }
 
     fun select(channel: Channel) {
-        mutable.update { state -> if (channel in state.visibleChannels) state.copy(selected = channel) else state }
+        mutable.update { state -> if (state.channelQuery.matches(channel, state.favoriteIds)) state.copy(selected = channel) else state }
     }
 
+    /** From the home or search lists: re-read the channel, so a stale or forged one is ignored. */
     fun openChannel(channel: Channel) {
-        val real = mutable.value.catalog.channels.firstOrNull { it.id == channel.id && it.streamUrl == channel.streamUrl } ?: return
-        navigate(Destination.TV)
-        if (mutable.value.catalog.channelsIn(mutable.value.categoryId).none { it.id == real.id }) category(real.categoryId)
-        select(real)
+        viewModelScope.launch {
+            val real = repository.channel(channel.id)?.takeIf { it.streamUrl == channel.streamUrl } ?: return@launch
+            navigate(Destination.TV)
+            val state = mutable.value
+            if (!ChannelQuery(state.categoryId).inCategory(real, state.favoriteIds)) category(real.categoryId)
+            select(real)
+        }
     }
 
     fun search(query: String) {
@@ -104,8 +148,8 @@ class LiveViewModel(
     }
 
     fun toggleFavorite(channel: Channel) {
-        val current = mutable.value.catalog.channels.firstOrNull { it.id == channel.id } ?: return
-        viewModelScope.launch { repository.setFavorite(current.id, !current.favorite) }
+        val favorite = mutable.value.isFavorite(channel)
+        viewModelScope.launch { repository.setFavorite(channel.id, !favorite) }
     }
 
     fun fullscreen(on: Boolean) {

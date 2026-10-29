@@ -37,9 +37,14 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.paging.PagingData
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.SubcomposeAsyncImage
+import kotlinx.coroutines.flow.Flow
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +57,7 @@ class MainActivity : ComponentActivity() {
             })
             val state by model.state.collectAsStateWithLifecycle()
             FullscreenEffect(state.fullscreen)
-            MiptvTheme { PhoneApp(state, model.actions()) }
+            MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
         }
     }
 }
@@ -108,8 +113,17 @@ fun LiveViewModel.actions() = PhoneActions(
     ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::toggleFavorite, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource
 )
 
+/** Paged channel lists, collected by the screens that show them. */
+class ChannelFeeds(val tv: Flow<PagingData<Channel>>, val search: Flow<PagingData<Channel>>, val home: Flow<PagingData<Channel>>)
+
+fun LiveViewModel.feeds() = ChannelFeeds(channels, searchResults, homeChannels)
+
+/** The collected lists, passed down to the lazy sections. */
+class ChannelPages(val tv: LazyPagingItems<Channel>, val search: LazyPagingItems<Channel>, val home: LazyPagingItems<Channel>)
+
 @Composable
-fun PhoneApp(state: LiveState, actions: PhoneActions) {
+fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
+    val pages = ChannelPages(feeds.tv.collectAsLazyPagingItems(), feeds.search.collectAsLazyPagingItems(), feeds.home.collectAsLazyPagingItems())
     // Hoisted above both layouts: switching to fullscreen re-attaches the surface, never the player.
     val playback = rememberPlayback(state.selected)
     if (state.fullscreen && playback != null) {
@@ -157,8 +171,8 @@ fun PhoneApp(state: LiveState, actions: PhoneActions) {
             item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
             when {
                 state.sourcesOpen -> sourcesSection(state, actions.addUrlSource, actions.addFileSource, actions.refreshSource, actions.removeSource)
-                state.destination == Destination.HOME -> homeSection(state, actions)
-                state.destination == Destination.TV -> tvSection(state, playback, actions)
+                state.destination == Destination.HOME -> homeSection(state, pages.home, actions)
+                state.destination == Destination.TV -> tvSection(state, pages.tv, playback, actions)
                 state.destination == Destination.MOVIES -> {
                     item { Text("Catalogue fictif · Les films arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(DemoContent.movies, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
@@ -167,20 +181,20 @@ fun PhoneApp(state: LiveState, actions: PhoneActions) {
                     item { Text("Catalogue fictif · Les séries arriveront avec un fournisseur Xtream.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(DemoContent.series, key = { it.id }) { item -> CatalogCard(item.title, item.description) }
                 }
-                else -> searchSection(state, actions)
+                else -> searchSection(state, pages.search, actions)
             }
         }
     }
 }
 
-private fun LazyListScope.homeSection(state: LiveState, actions: PhoneActions) {
+private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItems<Channel>, actions: PhoneActions) {
     item {
         Column(Modifier.fillMaxWidth().background(
             Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844))), RoundedCornerShape(24.dp)
         ).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Votre cinéma de poche", style = MaterialTheme.typography.headlineMedium)
             Text(
-                if (state.hasSources) "${state.catalog.channels.size} chaînes dans ${state.catalog.categories.size} catégories, depuis ${state.sources.size} source(s)."
+                if (state.hasSources) "${state.channelCount} chaînes dans ${state.imported.size} catégories, depuis ${state.sources.size} source(s)."
                 else "Ajoutez votre playlist M3U pour retrouver vos chaînes ici."
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -191,11 +205,13 @@ private fun LazyListScope.homeSection(state: LiveState, actions: PhoneActions) {
     }
     if (state.hasSources) {
         item { SectionTitle("À découvrir") }
-        items(state.catalog.channels.take(10), key = { "home-${it.id}" }) { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
+        items(minOf(10, channels.itemCount), key = channels.itemKey { "home-${it.id}" }) { index ->
+            channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
+        }
     }
 }
 
-private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actions: PhoneActions) {
+private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<Channel>, playback: Playback?, actions: PhoneActions) {
     if (state.ready && !state.hasSources) {
         item {
             Card(Modifier.fillMaxWidth().testTag("no-source")) {
@@ -216,7 +232,7 @@ private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actio
                     Text("Touchez une chaîne ci-dessous pour lancer la lecture.")
                 }
             }
-        } else Preview(playback, state.selected?.favorite == true, actions.fullscreen) { actions.toggleFavorite(playback.channel) }
+        } else Preview(playback, state.isFavorite(playback.channel), actions.fullscreen) { actions.toggleFavorite(playback.channel) }
     }
     item { SectionTitle("Catégories") }
     item {
@@ -233,8 +249,8 @@ private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actio
             trailingIcon = { if (state.filter.isNotEmpty()) IconButton(onClick = { actions.filter("") }) { Icon(Icons.Default.Close, contentDescription = "Effacer") } },
             modifier = Modifier.fillMaxWidth().testTag("filter-input"))
     }
-    item { SectionTitle("Chaînes · ${state.visibleChannels.size}") }
-    if (state.visibleChannels.isEmpty()) item {
+    item { SectionTitle("Chaînes · ${state.visibleCount}") }
+    if (state.visibleCount == 0) item {
         Text(
             when {
                 state.filter.isNotBlank() -> "Aucune chaîne ne correspond au filtre."
@@ -244,19 +260,23 @@ private fun LazyListScope.tvSection(state: LiveState, playback: Playback?, actio
             modifier = Modifier.testTag("empty-category")
         )
     }
-    items(state.visibleChannels, key = { it.id }) { channel -> ChannelCard(channel, state, state.selected?.id == channel.id, actions.toggleFavorite) { actions.select(channel) } }
+    items(channels.itemCount, key = channels.itemKey { it.id }) { index ->
+        channels[index]?.let { channel -> ChannelCard(channel, state, state.selected?.id == channel.id, actions.toggleFavorite) { actions.select(channel) } }
+    }
 }
 
-private fun LazyListScope.searchSection(state: LiveState, actions: PhoneActions) {
+private fun LazyListScope.searchSection(state: LiveState, channels: LazyPagingItems<Channel>, actions: PhoneActions) {
     item {
         OutlinedTextField(value = state.query, onValueChange = actions.search,
             label = { Text("Rechercher une chaîne") }, singleLine = true,
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().testTag("search-input"))
     }
-    item { Text("Recherche locale parmi ${state.catalog.channels.size} chaînes importées.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    if (state.searchChannels.isEmpty()) item { Text("Aucun résultat.") }
-    items(state.searchChannels, key = { it.id }) { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
+    item { Text("Recherche locale parmi ${state.channelCount} chaînes importées.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    if (state.searchCount == 0) item { Text("Aucun résultat.") }
+    items(channels.itemCount, key = channels.itemKey { "search-${it.id}" }) { index ->
+        channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
+    }
 }
 
 @Composable
@@ -301,7 +321,7 @@ private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, t
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1
                 )
             }
-            FavoriteButton(channel.favorite, Modifier.testTag("favorite-${channel.id}")) { toggleFavorite(channel) }
+            FavoriteButton(state.isFavorite(channel), Modifier.testTag("favorite-${channel.id}")) { toggleFavorite(channel) }
         }
     }
 }

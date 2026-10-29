@@ -3,6 +3,7 @@ package com.miptv
 import androidx.media3.common.PlaybackException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackErrorTest {
@@ -19,5 +20,25 @@ class PlaybackErrorTest {
 
     @Test fun messagesNeverEchoTheStreamLocation() {
         for (code in listOf(2000, 2001, 2004, 2005, 3001, 4001, 1000)) assertFalse(describe(code).contains("host"))
+    }
+
+    @Test fun loadingWatchExpiresAfterTheLimitOfUninterruptedLoading() {
+        val watch = LoadingWatch(limitMs = 20_000)
+        assertFalse(watch.expired(0))
+        watch.update(loading = true, nowMs = 1_000)
+        watch.update(loading = true, nowMs = 15_000)
+        assertFalse(watch.expired(20_999))
+        assertTrue(watch.expired(21_000))
+    }
+
+    @Test fun loadingWatchRestartsWhenLoadingStopsOrIsPaused() {
+        val watch = LoadingWatch(limitMs = 20_000)
+        watch.update(loading = true, nowMs = 0)
+        // Ready, or paused in the background: the clock stops and starts again from the next stall.
+        watch.update(loading = false, nowMs = 19_000)
+        assertFalse(watch.expired(25_000))
+        watch.update(loading = true, nowMs = 30_000)
+        assertFalse(watch.expired(49_999))
+        assertTrue(watch.expired(50_000))
     }
 }
