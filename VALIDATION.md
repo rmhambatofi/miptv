@@ -1,5 +1,59 @@
 # Validation — smartphone
 
+## Sprint 4 — synthèse (29 octobre 2026)
+
+Branche `feature/sprint4-epg` depuis `main` (après la PR #8), un commit par lot ; chaque commit compile et passe `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`, puis `connectedDebugAndroidTest` sur l'émulateur Pixel 2 API 35 x86_64 (macOS Intel, JDK 21, SDK 35). La PR #9, ouverte pendant ce sprint, a réparé le fichier de workflow CI, illisible depuis le lot 0.2 du Sprint 3 : aucun run GitHub n'avait vérifié les lots 1 à 4 du Sprint 3.
+
+| Lot | Commit | Contenu | Vérification |
+| --- | --- | --- | --- |
+| 1 — Parseurs et modèle | `ebf1e2e` | `XmltvParser` en flux (SAX, gzip, fenêtre, filtre, lots), `get_short_epg`, `url-tvg`, modèle `Programme` | 13 tests unitaires, 100 000 programmes filtrés en 0,6 s |
+| 2 — Room v4 et import | `6d890f8` | Table `programmes`, clé de guide des chaînes, migration 3 → 4, import en flux avec table de transit, maintenant / ensuite, recherche, EPG court Xtream, guide des favoris | 5 scénarios partagés : 5 tests JVM et 5 instrumentés, étape 3 → 4 de `MigrationTest` |
+| 3 — Interface | `2563114` | Cartes TV et Accueil, lecteur, feuille guide, rangée des favoris, groupe Programmes, fiche source | Vérifié à l'écran sur l'émulateur (ci-dessous) |
+| 4 — Tests et documentation | ce commit | Tests ViewModel et Compose du guide, README et VALIDATION | Totaux ci-dessous |
+
+État final : **110 tests unitaires** et **36 tests instrumentés** réussis (dont `CatalogPerformanceTest` ignoré sans `-e perf true`), lint **28 avertissements** comme au Sprint 3, zéro erreur, schéma Room v4 exporté et inchangé depuis le lot 2. Aucun test ne dépend du réseau : guides XMLTV et playlists servis par `GuideLoader`, réponses Xtream enregistrées, horloge figée au 29 octobre 2026 à 20 h 30 (`TestClock`).
+
+### Vérification à l'écran sur l'émulateur (lot 3)
+
+Playlist de 5 chaînes et guide XMLTV de 240 programmes datés du jour, générés et servis par le Mac (`http://10.0.2.2:8765`), importés par l'écran Sources : en base, 240 programmes, clés `tf1.fr` (tvg-id), `f2.fr` et `arte.fr` (par le nom, Arte malgré un `tvg-id` périmé), `m6.fr` (tvg-id sans `<channel>`), aucune clé pour la chaîne sans identifiant. Observé : ligne « Journal · barre · Ensuite · 22:45 Météo » sous TF1 dans l'Accueil, la TV et la Recherche, et sous l'aperçu ; feuille guide avec « Lire », puces Aujourd'hui / Demain / sam. 31 oct. / dim. 1 nov., 5 programmes aujourd'hui et 26 demain, programme en cours surligné avec barre, description dépliée au toucher ; rangée « En ce moment sur vos favoris » après l'étoile sur TF1 ; « Programmes · 47 » pour « voyage » et ouverture du guide d'Arte depuis un résultat ; fiche source avec le champ XMLTV prérempli, « Guide · 240 programmes · actualisé le … », « Actualiser le guide ». Un défaut corrigé : le champ XMLTV restait vide quand la carte d'une source supprimée était réutilisée pour une nouvelle source de même identifiant (clé `rememberSaveable`).
+
+### Scénarios à jouer sur le Xiaomi 15
+
+APK debug 0.4.0 à déposer dans Téléchargements (installation par l'utilisateur, HyperOS refusant `pm install`). Le téléphone porte la version 0.3.0 du Sprint 3 avec une base v3 (source iptv-org, 198 chaînes, 2 favoris). Il faut une playlist dont l'en-tête porte `url-tvg`, ou l'adresse d'un guide XMLTV public (par exemple celui publié pour les chaînes françaises d'iptv-org), et le compte Xtream de test. Aucune adresse ni identifiant n'est consigné ici. La colonne Résultat se remplit au fil des scénarios.
+
+| # | Scénario | Comment | Attendu | Résultat |
+| --- | --- | --- | --- | --- |
+| 1 | Mise à jour et migration 3 → 4 | Installer l'APK depuis Téléchargements, lancer l'app | Démarrage sans réimport ; `user_version` 4 ; table `programmes` vide ; `channels.epgKey` rempli depuis `tvgId` ; sources, chaînes, favoris intacts | |
+| 2 | Guide d'une playlist | Sources → fiche iptv-org → saisir l'adresse XMLTV → « Enregistrer le guide » ; chronométrer | Message « N programmes dans le guide de « … » » ; fiche : « Guide · N programmes · actualisé le … » ; en base, programmes dans la fenêtre −6 h / +3 j seulement ; taille de la base et mémoire (`dumpsys meminfo`) notées | |
+| 3 | Rattachement | TV : chaînes avec `tvg-id` présent dans le guide, chaînes rattachées par le nom, chaînes sans programme | Ligne « maintenant / ensuite » sous les chaînes couvertes, rien sous les autres ; proportion de chaînes couvertes notée | |
+| 4 | Lecteur | Lire une chaîne couverte, plein écran, rotation | Programme en cours et « Ensuite » sous l'aperçu et dans l'en-tête plein écran ; barre qui avance ; passage à la minute suivante sans saccade | |
+| 5 | Feuille guide | Bouton calendrier d'une chaîne → puces de jour → toucher une description → « Lire » | Programme en cours affiché en premier et surligné ; jours suivants remplis ; description dépliée ; « Lire » ouvre TV sur la chaîne ; Retour ferme la feuille | |
+| 6 | Accueil | Étoile sur deux chaînes couvertes, revenir à l'Accueil | Rangée « En ce moment sur vos favoris » avec les deux chaînes ; toucher lit, le petit calendrier ouvre le guide | |
+| 7 | Recherche de programmes | Recherche → un mot d'un titre de programme | Groupe « Programmes · n » ; un résultat ouvre le guide de la chaîne au bon jour, programme visible | |
+| 8 | Erreur de guide | Fiche source → adresse XMLTV fausse puis injoignable → « Enregistrer le guide » | Message en rouge sans l'adresse ; `epgError` sur la fiche ; les programmes précédents restent affichés | |
+| 9 | Fournisseur Xtream : EPG court | Ajouter le fournisseur de test (ou l'actualiser) ; dans TV, toucher une chaîne Xtream non favorite | Après quelques secondes, programme en cours et « Ensuite » sous l'aperçu ; `logcat` sans `player_api` ni identifiant ; une seule requête `get_short_epg` par chaîne en 30 min | |
+| 10 | Fournisseur Xtream : guide des favoris | Étoile sur 3 chaînes Xtream → fiche source → « Actualiser le guide » ; chronométrer | Téléchargement de `xmltv.php` filtré : « N programmes dans le guide de « … » », N borné aux 3 chaînes et 3 jours ; mémoire stable pendant l'import (lecture en flux) | |
+| 11 | Actualisation de la source | Fiche source → « Actualiser » | Chaînes et guide réimportés ; clés par le nom recalculées ; favoris conservés | |
+| 12 | Redémarrage et purge | `am force-stop` puis relance le lendemain (ou horloge avancée) | Programmes finis depuis plus de 12 h absents ; « maintenant » à jour ; aucun réimport | |
+| 13 | Retrait du guide | Fiche source → vider l'adresse → « Retirer le guide » | Plus aucune ligne « maintenant » ; `programmes` vide pour la source ; « Aucun guide » sur la fiche | |
+| 14 | Suppression de la source | Fiche source → « Supprimer » | Programmes et clés de la source disparus avec elle | |
+
+## Sprint 4 — lot 1 : parseurs XMLTV et EPG court (29 octobre 2026)
+
+13 tests unitaires (99 au total) : `XmltvParserTest` (chaînes, décalages, langues, entités et CDATA, programme sans fin fermé par le suivant, fenêtre, filtre de chaînes, lots, gzip, HTML, document vide ou tronqué, heures partielles et décalages aberrants, numéros `xmltv_ns`, base64 prudent, progression d'un programme, 100 000 programmes de 200 chaînes filtrés sur 50 favorites et 72 h en 623 ms sur le Mac), `shortEpg` (base64, horodatages puis heures locales, listes vides ou en objet), en-tête `url-tvg` dans `M3uParserTest`, `get_short_epg` dans `XtreamClientTest` (paramètres `stream_id` et `limit`). Lint inchangé (28).
+
+## Sprint 4 — lot 2 : Room v4 et import du guide (29 octobre 2026)
+
+Migration 3 → 4 égale au schéma exporté `4.json`, validée par `MigrationTest` depuis une base v1 remplie (clés de guide `bbb`, `sintel`, `null`). Cinq scénarios `EpgScenarios` sur les deux dépôts (JVM et Room) : import d'une playlist avec `url-tvg` et rattachement par `tvg-id`, nom (France 2, Arte malgré un `tvg-id` périmé) et clé nue (M6 sans `<channel>`) ; « maintenant / ensuite » à 20 h 30 pour quatre chaînes (M6 commence exactement à l'heure, Arte sans suivant) ; guide du jour et du lendemain (programme à cheval sur minuit) ; recherche « voyage » (3 résultats triés, programmes finis et orphelins exclus) ; adresse `ftp` refusée, hôte injoignable et page HTML conservant l'ancien guide avec `epgError`, guide valide ensuite, retrait ; actualisation de la playlist réimportant le guide à l'adresse choisie par l'utilisateur ; fournisseur Xtream sans favori (rien téléchargé), EPG court à la sélection (clé `stream:{id}` sans `epg_channel_id`, cache), guide des favoris filtré, échec conservant les programmes, suppression ; purge après 12 h. Côté Room en plus : table de transit vide après import, clés `epgKey` en base. Totaux : 104 unitaires, 32 instrumentés. Premier échec, corrigé : `generateSequence` s'arrêtait à la première clé `null` dans le test de migration.
+
+## Sprint 4 — lot 3 : interface du guide (29 octobre 2026)
+
+Vérification à l'écran décrite dans la synthèse ; tests existants (104 unitaires, 32 instrumentés) inchangés après les modifications des cartes, de l'aperçu et de la fiche source.
+
+## Sprint 4 — lot 4 : tests et documentation (29 octobre 2026)
+
+`GuideViewModelTest` (6) : horloge, favoris et chaîne sélectionnée ; feuille guide chargée, jour suivant, chaîne sans clé, fermeture par Sources ; recherche de programmes, ouverture du guide sur le résultat, « Lire » depuis le guide ; adresse du guide (enregistrée, refusée, injoignable, retirée) avec les messages en français ; EPG court Xtream à la sélection et à l'ouverture ; mise en forme des heures et des jours en heure de Paris. `GuidePhoneTest` (4 Compose) : cartes avec programme en cours et chaîne sans ligne, feuille guide sur deux jours puis « Lire » et ligne sous l'aperçu ; rangée « En ce moment sur vos favoris » et son bouton guide ; résultat de recherche ouvrant le guide ; champ XMLTV de la fiche source (préremplissage, enregistrement, état, « Actualiser le guide »). README et VALIDATION réécrits ; `SPRINT4.md` tient le bilan.
+
 ## Sprint 3 — synthèse (29 octobre 2026)
 
 Branche `feature/sprint3-xtream`, un commit par lot ; chaque commit compile et passe la commande CI locale `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`, puis `connectedDebugAndroidTest` sur l'émulateur Pixel 2 API 35 x86_64 (macOS Intel, JDK 21, SDK 35).

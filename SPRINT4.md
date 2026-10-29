@@ -82,6 +82,21 @@ Livré dans `GuideScreens.kt` (nouveau), `LiveViewModel.kt`, `MainActivity.kt`, 
 - CI inchangée (workflow réparé par la PR #9), contrôle du schéma `4.json`.
 - `README.md` et `VALIDATION.md` réécrits pour le Sprint 4, puis validation sur le Xiaomi 15 : import d'un XMLTV réel (durée, taille de la base, mémoire), `get_short_epg` du fournisseur de test, affichage dans TV, lecteur, guide, Accueil et Recherche, purge après 12 h.
 
+### Lot 4 — réalisé (29 octobre 2026)
+
+`GuideViewModelTest` (6 tests) et `GuidePhoneTest` (4 tests Compose) ajoutés ; CI inchangée (le contrôle du schéma couvre `4.json`) ; `README.md` et `VALIDATION.md` réécrits pour le Sprint 4, avec la liste des scénarios à jouer sur le Xiaomi 15. Totaux : 110 tests unitaires, 36 instrumentés, lint 28 avertissements.
+
+## Bilan du sprint
+
+| Lot | Commit | État |
+| --- | --- | --- |
+| 1 — Parseurs et modèle | `ebf1e2e` | fait |
+| 2 — Room v4 et import | `6d890f8` | fait |
+| 3 — Interface | `2563114` | fait |
+| 4 — Tests et documentation | ce commit | fait |
+
+Reste : validation sur le Xiaomi 15 (guide XMLTV réel d'une playlist, EPG court et guide des favoris du fournisseur de test, purge), puis PR vers `main` une fois la PR #9 (workflow CI) fusionnée.
+
 ## Ordre
 
 1. Lot 1 (parseurs, testables seuls), puis Lot 2 (persistance), puis Lot 3 (interface).
