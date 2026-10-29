@@ -109,19 +109,26 @@ class PhoneActions(
     val removeSource: (Long) -> Unit,
     val sources: SourceActions,
     val vod: VodActions,
+    val guide: GuideActions,
     /** Turns a stored reference into the URL the player opens; null when the credentials are gone. */
     val resolveStream: suspend (String) -> String?,
     val saveProgress: (String, Long, Long) -> Unit,
     val nextEpisode: () -> Episode?
 )
 
+fun LiveViewModel.guideActions() = GuideActions(
+    open = { channel -> openGuide(channel) }, openAt = { hit -> openGuide(hit) }, day = ::guideDay, close = ::closeGuide, play = ::playFromGuide,
+    setEpgUrl = ::setEpgUrl, refreshEpg = ::refreshEpg, tick = ::tick
+)
+
 fun LiveViewModel.actions() = PhoneActions(
     ::navigate, ::category, ::select, ::search, ::filter, ::fullscreen, ::toggleFavorite, ::openChannel, ::openSources, ::addUrlSource, ::addFileSource, ::refreshSource, ::removeSource,
-    sources = SourceActions(::addUrlSource, ::addFileSource, ::addXtreamSource, ::checkXtreamAccount, ::clearAccountCheck, ::refreshSource, ::removeSource),
+    sources = SourceActions(::addUrlSource, ::addFileSource, ::addXtreamSource, ::checkXtreamAccount, ::clearAccountCheck, ::refreshSource, ::removeSource, guideActions()),
     vod = VodActions(
         ::movieCategory, ::movieFilter, ::seriesCategory, ::seriesFilter, ::openMovie, ::openSeries, ::closeSheet, ::selectSeason,
         ::playMovie, { episode -> playEpisode(episode) }, ::playNextEpisode, ::stopVod, ::resume, { id -> toggleFavorite(id) }, ::fullscreen, ::openSources
     ),
+    guide = guideActions(),
     resolveStream = ::resolveStream,
     saveProgress = ::saveProgress,
     nextEpisode = ::nextEpisode
@@ -153,15 +160,24 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
     // Hoisted above both layouts: switching to fullscreen re-attaches the surface, never the player. One player for TV and VOD.
     val playback = rememberPlayback(state.playItem, resolve = actions.resolveStream, onProgress = { id, position, duration -> actions.saveProgress(id, position, duration) })
     val nextEpisode = if (state.vod != null) actions.nextEpisode() else null
+    // The guide's clock: one tick at each minute boundary while the screen is shown.
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000L - System.currentTimeMillis() % 60_000L)
+            actions.guide.tick()
+        }
+    }
     if (state.fullscreen && playback != null) {
         BackHandler { actions.fullscreen(false) }
-        FullscreenPlayer(playback, onExit = { actions.fullscreen(false) }, onNext = if (nextEpisode != null) actions.vod.playNext else null)
+        FullscreenPlayer(playback, onExit = { actions.fullscreen(false) }, onNext = if (nextEpisode != null) actions.vod.playNext else null, nowNext = state.selectedNowNext)
         return
     }
-    val sheetOpen = !state.sourcesOpen && (state.movieSheet != null || state.seriesSheet != null)
+    val guideOpen = !state.sourcesOpen && state.guideSheet != null
+    val sheetOpen = !state.sourcesOpen && !guideOpen && (state.movieSheet != null || state.seriesSheet != null)
     BackHandler(state.sourcesOpen) { actions.openSources(false) }
+    BackHandler(guideOpen) { actions.guide.close() }
     BackHandler(sheetOpen) { actions.vod.closeSheet() }
-    BackHandler(!state.sourcesOpen && !sheetOpen && state.destination != Destination.HOME) { actions.navigate(Destination.HOME) }
+    BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && state.destination != Destination.HOME) { actions.navigate(Destination.HOME) }
     Scaffold(bottomBar = {
         NavigationBar {
             Destination.entries.forEach { destination ->
@@ -182,7 +198,15 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
             }
         }
     }) { padding ->
-        val scrollState = key(state.destination, state.sourcesOpen, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id) { rememberLazyListState() }
+        val guide = state.guideSheet
+        val scrollState = key(state.destination, state.sourcesOpen, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
+        // Once the day's programmes arrive, show the one on air (or the searched one) first.
+        LaunchedEffect(guideOpen, guide?.channel?.id, guide?.dayStartMs, guide?.loading) {
+            if (!guideOpen || guide == null || guide.loading) return@LaunchedEffect
+            val target = guide.focusMs ?: guide.programmes.firstOrNull { it.isLive(state.nowMs) }?.startMs ?: return@LaunchedEffect
+            val index = guide.programmes.indexOfFirst { it.startMs == target }
+            if (index > 0) scrollState.scrollToItem(1 + GUIDE_HEADER_ITEMS + index)
+        }
         LazyColumn(
             state = scrollState,
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding().testTag("content"),
@@ -197,9 +221,10 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                     }
                 }
             }
-            if (!sheetOpen) item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
+            if (!sheetOpen && !guideOpen) item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
             when {
                 state.sourcesOpen -> sourcesSection(state, actions.sources)
+                guideOpen -> guideSection(state, guide!!, playback?.takeIf { state.selected != null }, actions.guide, actions.fullscreen, actions.toggleFavorite)
                 state.destination == Destination.HOME -> homeSection(state, pages.home, actions)
                 state.destination == Destination.TV -> tvSection(state, pages.tv, playback?.takeIf { state.selected != null }, actions)
                 state.destination == Destination.MOVIES -> moviesSection(state, pages.movies, playback, actions.vod)
@@ -229,11 +254,12 @@ private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItem
             }
         }
     }
+    homeNowRow(state, actions.guide, actions.openChannel)
     homeVodRows(state, actions.vod)
     if (state.hasSources) {
         item { SectionTitle("À découvrir") }
         items(minOf(10, channels.itemCount), key = channels.itemKey { "home-${it.id}" }) { index ->
-            channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
+            channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite, actions.guide.open) { actions.openChannel(channel) } }
         }
     }
 }
@@ -259,7 +285,7 @@ private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<
                     Text("Touchez une chaîne ci-dessous pour lancer la lecture.")
                 }
             }
-        } else Preview(playback, state.isFavorite(playback.item.id), actions.fullscreen) { state.selected?.let(actions.toggleFavorite) }
+        } else Preview(playback, state.isFavorite(playback.item.id), actions.fullscreen, state.selectedNowNext, state.nowMs) { state.selected?.let(actions.toggleFavorite) }
     }
     item { SectionTitle("Catégories") }
     item {
@@ -288,7 +314,7 @@ private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<
         )
     }
     items(channels.itemCount, key = channels.itemKey { it.id }) { index ->
-        channels[index]?.let { channel -> ChannelCard(channel, state, state.selected?.id == channel.id, actions.toggleFavorite) { actions.select(channel) } }
+        channels[index]?.let { channel -> ChannelCard(channel, state, state.selected?.id == channel.id, actions.toggleFavorite, actions.guide.open) { actions.select(channel) } }
     }
 }
 
@@ -297,7 +323,7 @@ private fun LazyListScope.searchSection(state: LiveState, pages: ChannelPages, a
     val channels = pages.search
     item {
         OutlinedTextField(value = state.query, onValueChange = actions.search,
-            label = { Text(if (state.hasXtream) "Rechercher une chaîne, un film, une série" else "Rechercher une chaîne") }, singleLine = true,
+            label = { Text(when { state.hasXtream -> "Rechercher une chaîne, un film, une série"; state.hasGuide -> "Rechercher une chaîne ou un programme"; else -> "Rechercher une chaîne" }) }, singleLine = true,
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             modifier = Modifier.fillMaxWidth().testTag("search-input"))
     }
@@ -311,8 +337,9 @@ private fun LazyListScope.searchSection(state: LiveState, pages: ChannelPages, a
     if (state.hasXtream) item { SectionTitle("Chaînes · ${state.searchCount}") }
     if (state.searchCount == 0) item { Text(if (state.hasXtream) "Aucune chaîne." else "Aucun résultat.", color = if (state.hasXtream) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface) }
     items(channels.itemCount, key = channels.itemKey { "search-${it.id}" }) { index ->
-        channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite) { actions.openChannel(channel) } }
+        channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite, actions.guide.open) { actions.openChannel(channel) } }
     }
+    searchProgrammeSection(state, actions.guide)
     searchVodSections(state, pages.searchMovies, pages.searchSeries, actions.vod)
 }
 
@@ -343,18 +370,22 @@ fun FavoriteButton(favorite: Boolean, modifier: Modifier = Modifier, onToggle: (
 }
 
 @Composable
-private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, toggleFavorite: (Channel) -> Unit, onClick: () -> Unit) {
+private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, toggleFavorite: (Channel) -> Unit, openGuide: (Channel) -> Unit, onClick: () -> Unit) {
+    val nowNext = state.nowNext[channel.id]
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("channel-${channel.id}"),
         colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF3B2534) else MaterialTheme.colorScheme.surface)) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             ChannelLogo(channel)
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(channel.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
                 Text(
                     (if (selected) "En lecture · " else "") + (state.categoryNames[channel.categoryId] ?: M3uParser.DEFAULT_GROUP),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1
                 )
+                // Only when a programme is known: no reserved space otherwise.
+                if (nowNext != null) NowLine(nowNext, state.nowMs, Modifier.padding(top = 4.dp))
             }
+            GuideButton(channel, Modifier.testTag("guide-${channel.id}"), openGuide)
             FavoriteButton(state.isFavorite(channel), Modifier.testTag("favorite-${channel.id}")) { toggleFavorite(channel) }
         }
     }

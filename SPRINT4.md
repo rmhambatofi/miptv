@@ -65,6 +65,17 @@ Livré dans `Domain.kt`, `Persistence.kt` (Room v4, migration 3 → 4, schéma `
 - **Sources** : fiche source M3U avec champ « Guide des programmes (XMLTV) » prérempli par `url-tvg`, bouton « Actualiser le guide », état (date, nombre de programmes, erreur) ; fiche Xtream avec l'état du guide des favoris.
 - **ViewModel** : `LiveState.nowNext`, `guideSheet`, `homeNow`, `searchProgrammeCount` ; horloge partagée rafraîchie chaque minute pour les barres de progression.
 
+### Lot 3 — réalisé (29 octobre 2026)
+
+Livré dans `GuideScreens.kt` (nouveau), `LiveViewModel.kt`, `MainActivity.kt`, `Preview.kt` et `SourcesScreen.kt`, vérifié à l'écran sur l'émulateur avec une playlist servie par le Mac (en-tête `url-tvg`, guide de 240 programmes datés du jour) : cartes TV et Accueil avec « maintenant / ensuite », aperçu et plein écran avec le programme en cours, feuille guide (en-tête, « Lire », puces Aujourd'hui / Demain / dates, programme en cours surligné, descriptions dépliables), rangée « En ce moment sur vos favoris », groupe « Programmes · n » dont un résultat ouvre le guide de la chaîne au bon jour, fiche source avec champ XMLTV prérempli, état du guide et boutons « Enregistrer / Retirer / Actualiser le guide ». Décisions prises en cours de route :
+
+- **L'horloge appartient à l'écran** : `LiveState.nowMs` ne bouge que par `tick()`, appelé par un `LaunchedEffect` à chaque minute pleine, et à l'ouverture d'un guide. Une boucle `delay` dans le ViewModel aurait fait tourner `advanceUntilIdle` sans fin dans les tests. Les flux « maintenant / ensuite », recherche de programmes et guide du jour dérivent de `nowMs` par `flatMapLatest`.
+- **Chaînes favorites lues une fois par changement de favoris** (`repository.channel` sur chaque identifiant, les films et séries rendant `null`) pour construire la rangée de l'Accueil sans parcourir la liste paginée.
+- **Feuille guide dans la `LazyColumn` partagée**, comme les fiches film et série : le défilement initial vise le programme en cours ou le résultat de recherche (`focusMs`) après chargement ; quand la chaîne est celle en lecture, l'aperçu reste affiché dans la feuille, sinon un bouton « Lire » ouvre l'onglet TV sur la chaîne.
+- **`ensureShortEpg` à la sélection d'une chaîne et à l'ouverture de son guide** : une chaîne Xtream non favorite obtient ses prochains programmes au moment où ils servent, jamais en parcourant la liste.
+- **Champ XMLTV** : `rememberSaveable` clé par identifiant et adresse enregistrée, après qu'une carte réutilisée pour une nouvelle source de même identifiant a restauré un texte vide.
+- Hors écran : la description d'un programme se replie à deux lignes et se déplie au toucher ; aucune image de programme (hors périmètre).
+
 ## Lot 4 — Tests, CI et documentation
 
 - Tests unitaires ViewModel (guide, now/next, recherche de programmes, URL de guide) et instrumentés (Room : import, purge, jointure par `epgKey`, repli par nom, favoris Xtream ; Compose : carte avec programme, feuille guide, groupe Programmes ; migration 3 → 4).

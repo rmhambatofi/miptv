@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -48,6 +49,9 @@ data class SeriesSheet(val series: Series, val info: SeriesInfo? = null, val sea
 }
 
 /** A film or episode with a resume position, for the home row. */
+/** The guide of one channel for one local day; [focusMs] is the programme to scroll to (the one on air, or a search hit). */
+data class GuideSheet(val channel: Channel, val dayStartMs: Long, val programmes: List<Programme> = emptyList(), val loading: Boolean = true, val focusMs: Long? = null)
+
 data class ResumeItem(val item: PlayItem, val posterUrl: String?, val progress: PlaybackProgress, val movieId: String? = null, val seriesId: String? = null)
 
 data class LiveState(
@@ -94,7 +98,14 @@ data class LiveState(
     val recentSeries: List<Series> = emptyList(),
     /** Result of the connection test on the Xtream form. */
     val accountCheck: Fetched<XtreamAccountInfo>? = null,
-    val checkingAccount: Boolean = false
+    val checkingAccount: Boolean = false,
+    // Programme guide (Sprint 4). [nowMs] moves once a minute while the screen is shown.
+    val nowMs: Long = 0L,
+    val nowNext: Map<String, NowNext> = emptyMap(),
+    val favoriteChannels: List<Channel> = emptyList(),
+    val guideSheet: GuideSheet? = null,
+    val searchProgrammes: List<ProgrammeHit> = emptyList(),
+    val searchProgrammeCount: Int = 0
 ) {
     val categories: List<Category> get() = listOf(Category.ALL, Category.FAVORITES) + imported
     val movieCategoryList: List<Category> get() = listOf(Category.ALL, Category.FAVORITES) + movieCategories
@@ -109,6 +120,14 @@ data class LiveState(
     val searchVodQuery: VodQuery get() = VodQuery(text = query.trim())
     /** The one thing playing, if any. */
     val playItem: PlayItem? get() = selected?.toPlayItem() ?: vod
+    /** At least one source can show programmes: the Recherche tab then has a « Programmes » group. */
+    val hasGuide: Boolean get() = sources.any { it.hasGuide }
+    /** Favourite channels with something on air, for the home row. */
+    val onAirFavorites: List<Pair<Channel, NowNext>> get() = favoriteChannels.mapNotNull { channel -> nowNext[channel.id]?.let { channel to it } }
+    /** The days the guide sheet offers: today and the three next ones, as local midnights. */
+    val guideDays: List<Long> get() = guideDaysFrom(nowMs)
+    /** What the selected channel airs, for the player header. */
+    val selectedNowNext: NowNext? get() = selected?.let { nowNext[it.id] }
     fun isFavorite(channel: Channel): Boolean = channel.id in favoriteIds
     fun isFavorite(id: String): Boolean = id in favoriteIds
     /** Unfinished position of a film or episode, or null. */
@@ -117,9 +136,11 @@ data class LiveState(
 
 class LiveViewModel(
     private val repository: ChannelRepository,
-    private val saved: SavedStateHandle = SavedStateHandle()
+    private val saved: SavedStateHandle = SavedStateHandle(),
+    private val clock: () -> Long = { System.currentTimeMillis() }
 ) : ViewModel() {
     private val mutable = MutableStateFlow(LiveState(
+        nowMs = clock(),
         categoryId = saved.get<String>("category") ?: Category.ALL.id,
         destination = Destination.entries.firstOrNull { it.name == saved.get<String>("destination") } ?: Destination.HOME,
         query = saved.get<String>("query").orEmpty(),
@@ -145,7 +166,38 @@ class LiveViewModel(
         viewModelScope.launch { repository.categories.collect { categories -> mutable.update { it.withCategories(categories) } } }
         viewModelScope.launch { repository.movieCategories.collect { categories -> mutable.update { it.withMovieCategories(categories) } } }
         viewModelScope.launch { repository.seriesCategories.collect { categories -> mutable.update { it.withSeriesCategories(categories) } } }
-        viewModelScope.launch { repository.favoriteIds.collect { ids -> mutable.update { it.copy(favoriteIds = ids) } } }
+        viewModelScope.launch {
+            repository.favoriteIds.collect { ids ->
+                // Favourite channels are few: read them once per change for the « En ce moment » row (film and series ids yield null).
+                val channels = ids.mapNotNull { repository.channel(it) }
+                mutable.update { it.copy(favoriteIds = ids, favoriteChannels = channels) }
+            }
+        }
+        viewModelScope.launch { repository.purgeProgrammes() }
+        viewModelScope.launch {
+            mutable.map { it.nowMs }.distinctUntilChanged().flatMapLatest { repository.nowAndNext(it) }
+                .collect { map -> mutable.update { it.copy(nowNext = map) } }
+        }
+        viewModelScope.launch {
+            mutable.map { it.query.trim() to it.nowMs }.distinctUntilChanged().flatMapLatest { (text, now) -> repository.searchProgrammes(text, now) }
+                .collect { hits -> mutable.update { it.copy(searchProgrammes = hits) } }
+        }
+        viewModelScope.launch {
+            mutable.map { it.query.trim() to it.nowMs }.distinctUntilChanged().flatMapLatest { (text, now) -> repository.countProgrammes(text, now) }
+                .collect { n -> mutable.update { it.copy(searchProgrammeCount = n) } }
+        }
+        viewModelScope.launch {
+            mutable.map { it.guideSheet?.let { sheet -> sheet.channel.id to sheet.dayStartMs } }.distinctUntilChanged()
+                .flatMapLatest { key -> if (key == null) flowOf(null) else repository.programmes(key.first, key.second, key.second + DAY_MS).map { key to it } }
+                .collect { loaded ->
+                    if (loaded == null) return@collect
+                    mutable.update { state ->
+                        val sheet = state.guideSheet
+                        if (sheet == null || sheet.channel.id != loaded.first.first || sheet.dayStartMs != loaded.first.second) state
+                        else state.copy(guideSheet = sheet.copy(programmes = loaded.second, loading = false))
+                    }
+                }
+        }
         viewModelScope.launch {
             repository.sources.collect { sources ->
                 mutable.update { it.copy(sources = sources, ready = true) }
@@ -267,6 +319,7 @@ class LiveViewModel(
 
     fun select(channel: Channel) {
         mutable.update { state -> if (state.channelQuery.matches(channel, state.favoriteIds)) state.copy(selected = channel, vod = null) else state }
+        viewModelScope.launch { repository.ensureShortEpg(channel.id) }
     }
 
     /** From the home or search lists: re-read the channel, so a stale or forged one is ignored. */
@@ -305,9 +358,55 @@ class LiveViewModel(
     fun openSources(open: Boolean) {
         saved["sourcesOpen"] = open
         mutable.update {
-            if (open) it.copy(sourcesOpen = true, selected = null, vod = null, fullscreen = false)
+            if (open) it.copy(sourcesOpen = true, selected = null, vod = null, fullscreen = false, guideSheet = null)
             else it.copy(sourcesOpen = false, importStatus = ImportStatus(), accountCheck = null, checkingAccount = false)
         }
+    }
+
+    // --- programme guide ---
+
+    /** Moves the shared clock; the screen calls it once a minute so progress bars and « maintenant » follow. */
+    fun tick() {
+        mutable.update { it.copy(nowMs = clock()) }
+    }
+
+    /** Opens the guide of a channel on today, focused on what is on air; Xtream channels fetch their short EPG. */
+    fun openGuide(channel: Channel) {
+        val now = clock()
+        mutable.update { it.copy(nowMs = now, guideSheet = GuideSheet(channel, dayStart(now), focusMs = it.nowNext[channel.id]?.now?.startMs)) }
+        viewModelScope.launch { repository.ensureShortEpg(channel.id) }
+    }
+
+    /** From a search hit: the guide of the channel on the programme's day, scrolled to it. */
+    fun openGuide(hit: ProgrammeHit) {
+        mutable.update { it.copy(nowMs = clock(), guideSheet = GuideSheet(hit.channel, dayStart(hit.programme.startMs), focusMs = hit.programme.startMs)) }
+    }
+
+    fun guideDay(dayStartMs: Long) {
+        mutable.update { state ->
+            val sheet = state.guideSheet ?: return@update state
+            if (sheet.dayStartMs == dayStartMs) state else state.copy(guideSheet = sheet.copy(dayStartMs = dayStartMs, programmes = emptyList(), loading = true, focusMs = null))
+        }
+    }
+
+    fun closeGuide() {
+        mutable.update { it.copy(guideSheet = null) }
+    }
+
+    /** « Lire » in the guide: the TV tab with the channel playing; the guide closes. */
+    fun playFromGuide(channel: Channel) {
+        closeGuide()
+        openChannel(channel)
+    }
+
+    fun setEpgUrl(sourceId: Long, url: String?) = import(::guideMessage) { repository.setEpgUrl(sourceId, url) }
+
+    fun refreshEpg(sourceId: Long) = import(::guideMessage) { repository.refreshEpg(sourceId) }
+
+    private fun guideMessage(source: Source): String = when {
+        !source.hasGuide -> "Guide retiré de « ${source.name} »."
+        source.kind == SourceKind.XTREAM && source.programmeCount == 0 -> "Aucune chaîne favorite : le guide de « ${source.name} » suit vos favoris."
+        else -> "${source.programmeCount} programmes dans le guide de « ${source.name} »."
     }
 
     // --- films and series ---
@@ -492,20 +591,56 @@ class LiveViewModel(
         else -> "${source.channelCount} chaînes importées depuis « ${source.name} »."
     }
 
-    private fun import(block: suspend () -> ImportResult) {
+    private fun import(message: (Source) -> String = ::importedMessage, block: suspend () -> ImportResult) {
         if (mutable.value.importStatus.running) return
         mutable.update { it.copy(importStatus = ImportStatus(running = true, message = "Importation en cours…"), accountCheck = null) }
         viewModelScope.launch {
             val status = when (val result = block()) {
-                is ImportResult.Success -> ImportStatus(message = importedMessage(result.source))
+                is ImportResult.Success -> ImportStatus(message = message(result.source))
                 is ImportResult.Failure -> ImportStatus(message = result.message, error = true)
             }
             mutable.update { it.copy(importStatus = status) }
         }
     }
 
-    private companion object { const val RECENT = 10 }
+    private companion object {
+        const val RECENT = 10
+        const val DAY_MS = 24 * 3_600_000L
+    }
 }
+
+// --- programme guide formatting (local time zone) ---
+
+/** Local midnight of the day containing [epochMs]. */
+fun dayStart(epochMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Long =
+    java.time.Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+
+/** Today and the three following days, as local midnights: the retention window of the guide. */
+fun guideDaysFrom(nowMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): List<Long> {
+    val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+    return (0L..3L).map { today.plusDays(it).atStartOfDay(zone).toInstant().toEpochMilli() }
+}
+
+/** « Aujourd'hui », « Demain », then « jeu. 31 oct. ». */
+fun dayLabel(dayStartMs: Long, nowMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String {
+    val day = java.time.Instant.ofEpochMilli(dayStartMs).atZone(zone).toLocalDate()
+    val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+    return when (java.time.temporal.ChronoUnit.DAYS.between(today, day)) {
+        0L -> "Aujourd'hui"
+        1L -> "Demain"
+        else -> day.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.FRANCE))
+    }
+}
+
+/** « 20:35 ». */
+fun formatTime(epochMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+    java.time.Instant.ofEpochMilli(epochMs).atZone(zone).toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+
+/** « 20:00 – 20:35 ». */
+fun formatSlot(programme: Programme, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String = "${formatTime(programme.startMs, zone)} – ${formatTime(programme.stopMs, zone)}"
+
+/** « Ensuite · 20:35 Météo », or null. */
+fun nextLabel(nowNext: NowNext, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String? = nowNext.next?.let { "Ensuite · ${formatTime(it.startMs, zone)} ${it.title}" }
 
 fun Movie.toPlayItem(resumeMs: Long = 0L) = PlayItem(id, title, movieSubtitle(), streamRef().format(), live = false, resumeMs = resumeMs)
 
