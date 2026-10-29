@@ -91,7 +91,7 @@ Livré dans `LiveViewModel.kt`, `Preview.kt`, `MainActivity.kt`, `SourcesScreen.
 
 ### Lot 4 — réalisé (29 octobre 2026)
 
-`FormatTest` et `PlayerResolutionTest` ajoutés ; CI inchangée ; `README.md` et `VALIDATION.md` réécrits pour le Sprint 3. Totaux : 86 tests unitaires, 27 instrumentés, lint 28 avertissements. Ce qui n'a pas pu être vérifié sans compte réel est listé dans `VALIDATION.md`, « Reste à valider sur appareil ».
+`FormatTest` et `PlayerResolutionTest` ajoutés ; CI inchangée ; `README.md` et `VALIDATION.md` réécrits pour le Sprint 3. Totaux : 86 tests unitaires, 27 instrumentés, lint 28 avertissements. La validation sur appareil est consignée dans `VALIDATION.md`, « Validation sur appareil ».
 
 ## Bilan du sprint
 
@@ -106,7 +106,7 @@ Livré dans `LiveViewModel.kt`, `Preview.kt`, `MainActivity.kt`, `SourcesScreen.
 | 3 interface | fait | `b381fd8` |
 | 4 tests et documentation | fait | dernier commit de la branche |
 
-Reste : validation sur le Xiaomi 15 avec un compte Xtream de test (lecture réelle, Keystore, affiches, volume), puis PR vers `main`.
+Validation sur le Xiaomi 15 faite le 29 octobre 2026 avec un compte Xtream de test : 14 scénarios sur 17 vérifiés par adb, 3 rapportés par l'utilisateur (actualisation, arrière-plan, mode avion), aucun défaut relevé. Reste : PR vers `main`.
 
 ## Ordre et dépendances
 
