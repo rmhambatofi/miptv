@@ -1,5 +1,32 @@
 # Validation — smartphone
 
+## Sprint 3 — synthèse (29 octobre 2026)
+
+Branche `feature/sprint3-xtream`, un commit par lot ; chaque commit compile et passe la commande CI locale `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`, puis `connectedDebugAndroidTest` sur l'émulateur Pixel 2 API 35 x86_64 (macOS Intel, JDK 21, SDK 35).
+
+| Lot | Commit | Contenu | Vérification |
+| --- | --- | --- | --- |
+| 0.1 — Schéma exporté | `8a99470` | `exportSchema`, `app/schemas` versionné, `MigrationTest` sur une base v1 remplie | CI : le schéma généré doit être commité |
+| 0.2 — Pagination | `7836642` | Pagination par clé depuis Room, favoris sans réémission du catalogue | Mesures sur 50 000 chaînes ci-dessous |
+| 0.3 — Validation appareil | `635ee4b` | Scénarios du Sprint 2 sur le Xiaomi 15 | Section dédiée ci-dessous |
+| 0.4 — Délai borné | `430bc42` | Erreur et « Réessayer » après 20 s de chargement | `PlayerTimeoutTest`, Xiaomi 15 |
+| 1 — Client Xtream | `5c36b25` | Parseurs en flux, client HTTP, URL de lecture, erreurs en français | 33 tests unitaires, 30 000 films en 0,44 s |
+| 2 — Identifiants et Room v3 | `6023f64` | Mot de passe chiffré (Keystore), tables VOD, caches, favoris, reprise, migration 2 → 3 | 9 unitaires, 7 instrumentés |
+| 3 — Interface | `b381fd8` | Formulaire Xtream, Films, Séries, lecteur VOD unique, Accueil, Recherche groupée | 6 unitaires, 4 Compose |
+| 4 — Tests et documentation | ce commit | Tests du lecteur VOD et des formats, README et VALIDATION réécrits | Totaux ci-dessous |
+
+État final : **86 tests unitaires** et **27 tests instrumentés** réussis, lint **28 avertissements** (mises à jour de dépendances épinglées, cible API, écran tactile requis, un `InputStream` fermé par l'appelant), zéro erreur, schéma Room v3 inchangé depuis le lot 2. Aucun test ne dépend du réseau : réponses Xtream enregistrées et anonymisées, serveurs locaux sur `ServerSocket`, faux client, clé AES générée sur place.
+
+### Reste à valider sur appareil (Xiaomi 15, compte Xtream de test)
+
+Ce qui suit n'est vérifiable qu'avec un vrai fournisseur et n'a pas été observé dans ce sprint :
+
+- ajout d'un fournisseur réel : test de connexion, durée d'import d'un catalogue de plusieurs dizaines de milliers de films, affiches Coil sur un vrai catalogue, défilement des grilles ;
+- lecture réelle d'une chaîne Xtream (`ts` ou `m3u8` selon le compte), d'un film et d'un épisode : résolution de l'URL, saut ±10 s, reprise après fermeture et après redémarrage, « Épisode suivant » à la fin réelle d'un épisode, plein écran ;
+- Keystore réel : chiffrement au premier ajout, lecture après redémarrage, comportement après effacement des données ou restauration ; exclusion effective du transfert d'appareil à appareil ;
+- compte expiré ou nombre maximal de connexions atteint sur un vrai panel (messages observés à l'actualisation et à la lecture) ;
+- hétérogénéité des panels : les parseurs sont tolérants sur les variantes connues, un panel inconnu peut en révéler d'autres.
+
 ## Sprint 3 — lot 0.2 : performance du catalogue (29 octobre 2026)
 
 Mesures sur une playlist générée de **50 000 chaînes** (500 groupes de 100, `tvg-id`, logo, URL), émulateur local Pixel 2 **API 35 x86_64** sur un MacBook Intel i7-1068NG7, APK **debug**. Les valeurs absolues sont pessimistes : un parsing de 100 000 lignes y prend environ 3 s, quelques centaines de millisecondes sur un ordinateur. Les comparaisons avant/après sont faites sur la même machine.
@@ -40,26 +67,6 @@ Même playlist servie depuis le Mac (`10.0.2.2`). L'application de référence e
 - un favori ne réémet plus le catalogue : fait (test `starringAChannelInvalidatesOnlyTheFavouritesList`) ;
 - temps d'import et mémoire : mesurés ;
 - défilement : non concluant sur émulateur ; mesuré sur appareil au lot 0.3.
-
-## Sprint 3 — lot 0.4 : délai de chargement borné (29 octobre 2026)
-
-Un flux qui ne répond pas restait sur « Chargement… » : Media3 relance seul les erreurs réseau, et un serveur qui accepte la connexion sans rien envoyer le fait attendre sans fin. Désormais, après 20 s de chargement continu alors que la lecture est demandée (au démarrage comme sur un direct qui se fige), le lecteur s'arrête et affiche « Le flux ne répond pas après 20 secondes. » avec « Réessayer ». Une pause, y compris le passage en arrière-plan, arrête le décompte.
-
-### Tests
-
-- Unitaires : 32/32, dont deux sur `LoadingWatch` (expiration à la limite, remise à zéro après une pause ou la fin du chargement).
-- Instrumentés : 15/15 sur l'émulateur, dont `PlayerTimeoutTest` : un vrai lecteur Media3 face à un serveur local qui garde la connexion ouverte sans répondre, limite réduite à 3 s. L'erreur apparaît, « Réessayer » relance un chargement, interrompu à son tour.
-- Lint : 29 avertissements, aucun nouveau, aucune erreur.
-
-### Xiaomi 15
-
-Chaîne « Flux muet » ajoutée au fichier de test, pointée vers un serveur du Mac qui accepte la connexion et n'envoie rien. Les temps sont mesurés par `uiautomator dump`, donc à environ 2,5 s près.
-
-| Scénario | Résultat |
-|---|---|
-| Lecture depuis la recherche | « Chargement… », puis le message et « Réessayer » entre 20 et 22,6 s après le tap |
-| « Réessayer » | Nouveau chargement, à nouveau interrompu au plus 22,4 s après le tap |
-| Arrière-plan 5 s après le lancement, 30 s dehors, puis retour | Aucun message des 20 s pendant la pause. Le lecteur reste en pause au retour. Media3 continue toutefois de charger pendant la pause et finit par échouer de lui-même (« Connexion au flux impossible. Vérifiez votre réseau. » et « Réessayer ») 66 à 76 s après le lancement, ce qui reste une fin bornée |
 
 ## Sprint 3 — lot 0.3 : validation sur le Xiaomi 15 (29 octobre 2026)
 
@@ -108,6 +115,26 @@ Les points « Non vérifié sur appareil » du Sprint 2 (ci-dessous) sont ainsi 
 - **Doublons de sources.** Rien n'empêche d'ajouter deux fois la même adresse, ce qui double les chaînes. Les identifiants de sources sont aussi réutilisés après une suppression (`MAX(id) + 1`).
 - **Installation.** La première mise à jour n'a pas été appliquée : l'installeur s'était ouvert sur l'ancienne entrée MediaStore de `miptv.apk`, le fichier ayant été redéposé sous le même nom. Le `versionCode` identique n'y est pour rien : au lot 0.4, un APK de même `versionCode` (3), déposé sous un nouveau nom, a bien été installé. Le `versionCode` passe tout de même à 3 (`versionName` 0.3.0) avec le changement de schéma, et l'APK est désormais déposé sous un nouveau nom.
 
+## Sprint 3 — lot 0.4 : délai de chargement borné (29 octobre 2026)
+
+Un flux qui ne répond pas restait sur « Chargement… » : Media3 relance seul les erreurs réseau, et un serveur qui accepte la connexion sans rien envoyer le fait attendre sans fin. Désormais, après 20 s de chargement continu alors que la lecture est demandée (au démarrage comme sur un direct qui se fige), le lecteur s'arrête et affiche « Le flux ne répond pas après 20 secondes. » avec « Réessayer ». Une pause, y compris le passage en arrière-plan, arrête le décompte.
+
+### Tests
+
+- Unitaires : 32/32, dont deux sur `LoadingWatch` (expiration à la limite, remise à zéro après une pause ou la fin du chargement).
+- Instrumentés : 15/15 sur l'émulateur, dont `PlayerTimeoutTest` : un vrai lecteur Media3 face à un serveur local qui garde la connexion ouverte sans répondre, limite réduite à 3 s. L'erreur apparaît, « Réessayer » relance un chargement, interrompu à son tour.
+- Lint : 29 avertissements, aucun nouveau, aucune erreur.
+
+### Xiaomi 15
+
+Chaîne « Flux muet » ajoutée au fichier de test, pointée vers un serveur du Mac qui accepte la connexion et n'envoie rien. Les temps sont mesurés par `uiautomator dump`, donc à environ 2,5 s près.
+
+| Scénario | Résultat |
+|---|---|
+| Lecture depuis la recherche | « Chargement… », puis le message et « Réessayer » entre 20 et 22,6 s après le tap |
+| « Réessayer » | Nouveau chargement, à nouveau interrompu au plus 22,4 s après le tap |
+| Arrière-plan 5 s après le lancement, 30 s dehors, puis retour | Aucun message des 20 s pendant la pause. Le lecteur reste en pause au retour. Media3 continue toutefois de charger pendant la pause et finit par échouer de lui-même (« Connexion au flux impossible. Vérifiez votre réseau. » et « Réessayer ») 66 à 76 s après le lancement, ce qui reste une fin bornée |
+
 ## Sprint 3 — lot 1 : client Xtream et modèle (29 octobre 2026)
 
 Lot testable sans appareil ni compte : aucun réseau, réponses JSON enregistrées et anonymisées (`XtreamFixtures`).
@@ -142,6 +169,14 @@ Sans réseau ni compte : faux client Xtream et dépôt mémoire derrière la vra
 - Lint : **28 avertissements**, aucun nouveau, aucune erreur. Schéma Room inchangé (v3).
 
 Non vérifié ici, à faire sur le Xiaomi 15 avec un compte de test : lecture réelle d'un film et d'un épisode Xtream (résolution de l'URL, saut ±10 s, reprise après fermeture), « Épisode suivant » à la fin réelle d'un épisode, affiches Coil sur un vrai catalogue, Keystore réel, fluidité des grilles sur plusieurs milliers de films.
+
+## Sprint 3 — lot 4 : tests, CI et documentation (29 octobre 2026)
+
+- Tests ajoutés : `FormatTest` (6 unitaires : durées et « Reprendre à », sous-titre de film, titres d'épisode et épisode suivant, seuil « Vu » à 95 %, filtre VOD insensible aux accents, description du compte) et `PlayerResolutionTest` (instrumenté : identifiants absents → « Identifiants de la source à ressaisir dans Sources » avec « Réessayer », nouvel essai qui résout à nouveau la référence, URL résolue atteignant un serveur local muet puis délai borné, fermeture du lecteur).
+- Couverture du plan vérifiée : parseurs, URL, messages, chiffrement, ViewModel Films et Séries (unitaires) ; migration 2 → 3, ajout Xtream par faux client, Films → fiche → lecture, Séries → saison → épisode, reprise (instrumentés). Non automatisable : la fin réelle d'un épisode et la sauvegarde de position par le vrai lecteur, qui demandent un média lisible ; couvertes par les tests du ViewModel et à observer sur appareil.
+- CI inchangée (`android.yml`) : unitaires, lint, APK et APK de test, vérification du schéma exporté, émulateur Pixel 2 API 35. Les fixtures partagées (`src/sharedTest`) sont compilées dans les deux source sets par Gradle, sans étape supplémentaire.
+- Unitaires : **86/86**. Instrumentés : **27/27** (`CatalogPerformanceTest` ignoré sans `-e perf true`). Lint : 28 avertissements, aucune erreur.
+- `README.md` réécrit pour le Sprint 3 (fonctionnalités Xtream, architecture, choix de conception, sécurité, tests) ; ce fichier réorganisé par lot avec la synthèse ci-dessus.
 
 ## Sprint 2
 

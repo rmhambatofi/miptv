@@ -89,6 +89,25 @@ Livré dans `LiveViewModel.kt`, `Preview.kt`, `MainActivity.kt`, `SourcesScreen.
 - **CI** inchangée (émulateur Pixel 2 API 35), avec la vérification du schéma exporté.
 - `README.md` et `VALIDATION.md` réécrits pour le Sprint 3 ; un commit par lot, comme au Sprint 2.
 
+### Lot 4 — réalisé (29 octobre 2026)
+
+`FormatTest` et `PlayerResolutionTest` ajoutés ; CI inchangée ; `README.md` et `VALIDATION.md` réécrits pour le Sprint 3. Totaux : 86 tests unitaires, 27 instrumentés, lint 28 avertissements. Ce qui n'a pas pu être vérifié sans compte réel est listé dans `VALIDATION.md`, « Reste à valider sur appareil ».
+
+## Bilan du sprint
+
+| Lot | État | Commit |
+|---|---|---|
+| 0.1 schéma exporté | fait | `8a99470` |
+| 0.2 pagination | fait, défilement mesuré sur appareil au 0.3 | `7836642` |
+| 0.3 validation appareil | fait | `635ee4b` |
+| 0.4 délai borné | fait | `430bc42` |
+| 1 client Xtream | fait | `5c36b25` |
+| 2 identifiants et Room v3 | fait | `6023f64` |
+| 3 interface | fait | `b381fd8` |
+| 4 tests et documentation | fait | dernier commit de la branche |
+
+Reste : validation sur le Xiaomi 15 avec un compte Xtream de test (lecture réelle, Keystore, affiches, volume), puis PR vers `main`.
+
 ## Ordre et dépendances
 
 1. Lot 0.1 (schéma exporté) avant toute migration ; 0.2 à 0.4 en parallèle des lots suivants.
