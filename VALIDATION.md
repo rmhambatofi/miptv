@@ -41,6 +41,26 @@ Même playlist servie depuis le Mac (`10.0.2.2`). L'application de référence e
 - temps d'import et mémoire : mesurés ;
 - défilement : non concluant sur émulateur ; mesuré sur appareil au lot 0.3.
 
+## Sprint 3 — lot 0.4 : délai de chargement borné (29 octobre 2026)
+
+Un flux qui ne répond pas restait sur « Chargement… » : Media3 relance seul les erreurs réseau, et un serveur qui accepte la connexion sans rien envoyer le fait attendre sans fin. Désormais, après 20 s de chargement continu alors que la lecture est demandée (au démarrage comme sur un direct qui se fige), le lecteur s'arrête et affiche « Le flux ne répond pas après 20 secondes. » avec « Réessayer ». Une pause, y compris le passage en arrière-plan, arrête le décompte.
+
+### Tests
+
+- Unitaires : 32/32, dont deux sur `LoadingWatch` (expiration à la limite, remise à zéro après une pause ou la fin du chargement).
+- Instrumentés : 15/15 sur l'émulateur, dont `PlayerTimeoutTest` : un vrai lecteur Media3 face à un serveur local qui garde la connexion ouverte sans répondre, limite réduite à 3 s. L'erreur apparaît, « Réessayer » relance un chargement, interrompu à son tour.
+- Lint : 29 avertissements, aucun nouveau, aucune erreur.
+
+### Xiaomi 15
+
+Chaîne « Flux muet » ajoutée au fichier de test, pointée vers un serveur du Mac qui accepte la connexion et n'envoie rien. Les temps sont mesurés par `uiautomator dump`, donc à environ 2,5 s près.
+
+| Scénario | Résultat |
+|---|---|
+| Lecture depuis la recherche | « Chargement… », puis le message et « Réessayer » entre 20 et 22,6 s après le tap |
+| « Réessayer » | Nouveau chargement, à nouveau interrompu au plus 22,4 s après le tap |
+| Arrière-plan 5 s après le lancement, 30 s dehors, puis retour | Aucun message des 20 s pendant la pause. Le lecteur reste en pause au retour. Media3 continue toutefois de charger pendant la pause et finit par échouer de lui-même (« Connexion au flux impossible. Vérifiez votre réseau. » et « Réessayer ») 66 à 76 s après le lancement, ce qui reste une fin bornée |
+
 ## Sprint 3 — lot 0.3 : validation sur le Xiaomi 15 (29 octobre 2026)
 
 **Matériel et méthode.** Xiaomi 15 (`24129PN74G`, HyperOS 3 / Android 16), écran de 1200×2670. Au départ, l'APK debug du Sprint 2 (schéma v1) était installé, avec la source iptv-org (198 chaînes, 2 favoris). La mise à jour est l'APK debug 0.3.0 du lot 0.2 (`7836642`, avec `versionCode` 3). Elle a été installée depuis le gestionnaire de fichiers, et la confirmation de l'installeur MIUI faite par l'utilisateur.
@@ -86,7 +106,7 @@ Les points « Non vérifié sur appareil » du Sprint 2 (ci-dessous) sont ainsi 
 
 - **Fichier remplacé.** Une playlist retéléchargée par-dessus l'ancienne rend la source fichier inaccessible. La seule issue est de la supprimer et de la rajouter. La nouvelle source reçoit un autre identifiant, et les identifiants de chaînes l'incluant, ses favoris sont perdus. Il manquerait un « Sélectionner à nouveau » qui garde la source.
 - **Doublons de sources.** Rien n'empêche d'ajouter deux fois la même adresse, ce qui double les chaînes. Les identifiants de sources sont aussi réutilisés après une suppression (`MAX(id) + 1`).
-- **`versionCode`.** Une mise à jour avec le même `versionCode` n'a pas été appliquée par l'installeur MIUI. Il passe à 3 (`versionName` 0.3.0) avec le changement de schéma.
+- **Installation.** La première mise à jour n'a pas été appliquée : l'installeur s'était ouvert sur l'ancienne entrée MediaStore de `miptv.apk`, le fichier ayant été redéposé sous le même nom. Le `versionCode` identique n'y est pour rien : au lot 0.4, un APK de même `versionCode` (3), déposé sous un nouveau nom, a bien été installé. Le `versionCode` passe tout de même à 3 (`versionName` 0.3.0) avec le changement de schéma, et l'APK est désormais déposé sous un nouveau nom.
 
 ## Sprint 2
 
