@@ -221,7 +221,7 @@ fun describePlaybackError(error: PlaybackException): String = when (error.errorC
     else -> "Lecture indisponible. Vérifiez votre connexion."
 }
 
-private const val DEFAULT_USER_AGENT = "miptv/0.3 (Android; Media3)"
+private const val DEFAULT_USER_AGENT = "miptv/0.4 (Android; Media3)"
 
 /** Media3 view bound to the hoisted player; the controller's own fullscreen button toggles [onFullscreen]. */
 @OptIn(UnstableApi::class)

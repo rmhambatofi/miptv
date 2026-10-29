@@ -44,6 +44,17 @@ Livré dans `Domain.kt`, `Epg.kt` (nouveau), `Xtream.kt`, `M3uParser.kt`, les fi
 - **Dépôt** (`ChannelRepository`) : `setEpgUrl(sourceId, url)`, `refreshEpg(sourceId)`, `nowAndNext(channelIds, nowMs): Flow<Map<String, NowNext>>`, `programmes(channelId, dayStartMs): Flow<List<Programme>>`, `searchProgrammes(text): Flow<PagingData<ProgrammeHit>>`, `ensureShortEpg(channelId)` (Xtream, cache 30 min). `MemoryChannelRepository` suit, pour les tests ViewModel.
 - **Version** 0.4.0 (`versionCode` 4).
 
+### Lot 2 — réalisé (29 octobre 2026)
+
+Livré dans `Domain.kt`, `Persistence.kt` (Room v4, migration 3 → 4, schéma `4.json`), `Sources.kt`, `Epg.kt`, les fixtures partagées (`GuideFixtures`, `GuideLoader`, `TestClock`, `EpgScenarios`) et les tests, version 0.4.0 (`versionCode` 4). Décisions prises en cours de route :
+
+- **Un seul jeu de scénarios pour les deux dépôts** : `EpgScenarios` (sources partagées) décrit le comportement attendu et tourne sur `MemoryChannelRepository` (5 tests JVM, 104 au total) et sur `RoomChannelRepository` (5 tests instrumentés, 32 au total dont la mesure de performance ignorée), plus l'étape 3 → 4 de `MigrationTest`. Lint reste à 28 avertissements. L'horloge est injectée (`clock`) pour figer les fenêtres au 29 octobre 2026, 20 h 30.
+- **Import en deux temps dans Room** : les programmes sont insérés par lots sous `-sourceId` pendant la lecture en flux (insertion bloquante depuis le collecteur SAX, une transaction courte par lot), puis échangés avec les anciens en une transaction ; un téléchargement interrompu ou un fichier illisible laisse le guide précédent et inscrit `epgError` sur la source. Aucun programme n'est gardé en mémoire au-delà du lot courant.
+- **Clé de guide sur la chaîne** (`channels.epgKey`, index `(sourceId, epgKey)`) : `tvg-id` quand le guide déclare la chaîne, sinon la chaîne du guide portant le même nom affiché (comparaison `searchKey`), sinon le `tvg-id` tel quel (un guide peut omettre ses `<channel>`). Recalculée à chaque import du guide, donc après chaque actualisation de la playlist. Les chaînes Xtream sans `epg_channel_id` reçoivent `stream:{id}` au premier `get_short_epg`.
+- **Guide d'un fournisseur** : sans favori, rien n'est téléchargé (`programmeCount` 0, sans erreur) ; avec des favoris, `xmltv.php` est lu en flux avec le filtre de leurs clés. `ensureShortEpg` n'interroge le fournisseur que si aucun programme en cours n'est connu pour la chaîne ou si le dernier appel date de plus de 30 min ; le remplacement du guide vide ce cache.
+- **« Maintenant / ensuite »** en SQL : programmes en cours joints aux chaînes, et pour chacun le premier programme commençant à sa fin ou après (sous-requête `MIN(startMs)` sur la clé primaire). Une chaîne sans programme en cours n'a pas de « ensuite ». La recherche porte sur `searchTitle` des programmes non terminés, 200 résultats au plus, triés par heure.
+- **Fenêtre** : import limité à `[maintenant − 6 h, maintenant + 3 jours[`, purge des programmes finis depuis plus de 12 h à chaque import et sur demande (`purgeProgrammes`, appelé au démarrage par le lot 3).
+
 ## Lot 3 — Interface
 
 - **Cartes TV** : ligne « maintenant » (titre et barre de progression) quand un programme est connu ; rien sinon, pas d'espace réservé.

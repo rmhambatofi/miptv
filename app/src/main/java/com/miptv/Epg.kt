@@ -289,6 +289,24 @@ class XmltvParser(
     }
 }
 
+/** Display names of a guide's channels, as [searchKey], to the guide channel id; the first channel wins a shared name. */
+fun guideNameIndex(channels: List<EpgChannel>): Map<String, String> {
+    val out = HashMap<String, String>(channels.size * 2)
+    for (channel in channels) for (name in channel.names) out.putIfAbsent(searchKey(name), channel.id)
+    return out
+}
+
+/**
+ * The guide key of a playlist channel: its `tvg-id` when the guide declares that channel, else the guide channel
+ * sharing its display name, else the `tvg-id` as typed (a guide may omit its `<channel>` elements altogether).
+ */
+fun guideKey(tvgId: String?, name: String, guideIds: Set<String>, byName: Map<String, String>): String? {
+    val id = tvgId?.trim()?.ifEmpty { null }
+    if (id != null && id in guideIds) return id
+    byName[searchKey(name)]?.let { return it }
+    return id
+}
+
 /** French message for a failed guide download or parse. Never echoes the guide address. */
 fun describeEpgError(error: Throwable): String = when (error) {
     is EpgException -> error.message ?: XmltvParser.UNEXPECTED

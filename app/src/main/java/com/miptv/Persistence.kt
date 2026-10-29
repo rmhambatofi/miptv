@@ -9,6 +9,7 @@ import androidx.paging.map
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
@@ -28,6 +29,8 @@ import androidx.sqlite.db.SupportSQLiteQuery
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,14 +50,23 @@ data class SourceEntity(
     val encryptedPassword: String? = null,
     val expiresAt: Long? = null,
     @ColumnInfo(defaultValue = "0") val movieCount: Int = 0,
-    @ColumnInfo(defaultValue = "0") val seriesCount: Int = 0
+    @ColumnInfo(defaultValue = "0") val seriesCount: Int = 0,
+    // v4 (Sprint 4), programme guide.
+    val epgUrl: String? = null,
+    val epgRefreshedAt: Long? = null,
+    val epgError: String? = null,
+    @ColumnInfo(defaultValue = "0") val programmeCount: Int = 0
 ) {
-    fun toSource() = Source(id, name, location, SourceKind.valueOf(kind), lastRefreshed, channelCount, lastError, username, expiresAt, movieCount, seriesCount)
+    fun toSource() = Source(
+        id, name, location, SourceKind.valueOf(kind), lastRefreshed, channelCount, lastError, username, expiresAt, movieCount, seriesCount,
+        epgUrl, epgRefreshedAt, epgError, programmeCount
+    )
     companion object {
         /** [encryptedPassword] is kept from the stored row: the domain [Source] never carries it. */
         fun from(source: Source, encryptedPassword: String? = null) = SourceEntity(
             source.id, source.name, source.location, source.kind.name, source.lastRefreshed, source.channelCount, source.lastError,
-            source.username, encryptedPassword, source.expiresAt, source.movieCount, source.seriesCount
+            source.username, encryptedPassword, source.expiresAt, source.movieCount, source.seriesCount,
+            source.epgUrl, source.epgRefreshedAt, source.epgError, source.programmeCount
         )
     }
 }
@@ -69,7 +81,7 @@ interface Ordered {
 data class CategoryEntity(@PrimaryKey val id: String, val name: String, val position: Int)
 
 /** Indices follow the list order (source, then playlist position), globally and within a category. */
-@Entity(tableName = "channels", indices = [Index("sourceId", "position"), Index("categoryId", "sourceId", "position")])
+@Entity(tableName = "channels", indices = [Index("sourceId", "position"), Index("categoryId", "sourceId", "position"), Index("sourceId", "epgKey")])
 data class ChannelEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -82,13 +94,15 @@ data class ChannelEntity(
     val userAgent: String?,
     val referer: String?,
     /** [searchKey] of [name], matched with LIKE: SQLite only folds ASCII case. */
-    @ColumnInfo(defaultValue = "") val searchName: String
+    @ColumnInfo(defaultValue = "") val searchName: String,
+    /** v4: key of the channel in its source's guide (`programmes.channelKey`): [tvgId], or a guide channel matched by name. */
+    val epgKey: String? = null
 ) : Ordered {
     fun toChannel() = Channel(id, name, categoryId, streamUrl, logoUrl, tvgId, sourceId, userAgent, referer)
     companion object {
         fun from(channel: Channel, position: Int) = ChannelEntity(
             channel.id, channel.name, channel.categoryId, channel.streamUrl, channel.logoUrl, channel.tvgId, channel.sourceId, position, channel.userAgent, channel.referer,
-            searchKey(channel.name)
+            searchKey(channel.name), channel.tvgId
         )
     }
 }
@@ -195,6 +209,38 @@ data class ProgressEntity(@PrimaryKey val itemId: String, val positionMs: Long, 
     fun toProgress() = PlaybackProgress(itemId, positionMs, durationMs, updatedAt)
 }
 
+/**
+ * v4 (Sprint 4): programme guide. One row per programme of a source's guide, keyed by the guide's channel id; channels
+ * join through `channels.epgKey`. While a guide is being imported its rows sit under `-sourceId` and replace the
+ * previous ones in one transaction at the end, so a failed download leaves the old guide in place.
+ */
+@Entity(tableName = "programmes", primaryKeys = ["sourceId", "channelKey", "startMs"], indices = [Index("stopMs"), Index("startMs")])
+data class ProgrammeEntity(
+    val sourceId: Long,
+    val channelKey: String,
+    val startMs: Long,
+    val stopMs: Long,
+    val title: String,
+    val description: String?,
+    val category: String?,
+    val episode: String?,
+    /** [searchKey] of [title]. */
+    val searchTitle: String
+) {
+    fun toProgramme() = Programme(channelKey, startMs, stopMs, title, description, category, episode, sourceId)
+    companion object {
+        fun from(programme: Programme, sourceId: Long = programme.sourceId) = ProgrammeEntity(
+            sourceId, programme.channelKey, programme.startMs, programme.stopMs, programme.title, programme.description, programme.category, programme.episode, searchKey(programme.title)
+        )
+    }
+}
+
+/** A programme with the id of a channel that airs it (several channels may share one guide key). */
+data class ChannelProgrammeRow(val channelId: String, @Embedded val programme: ProgrammeEntity)
+
+/** What the guide matcher needs of a channel. */
+data class ChannelKeyRow(val id: String, val name: String, val tvgId: String?, val epgKey: String?)
+
 @Dao
 interface CatalogDao {
     @Query("SELECT * FROM sources ORDER BY id") fun sources(): Flow<List<SourceEntity>>
@@ -266,6 +312,47 @@ interface CatalogDao {
     /** Item ids carry the source: `xtream:{sourceId}:…`. */
     @Query("DELETE FROM progress WHERE itemId LIKE 'xtream:' || :sourceId || ':%'") suspend fun deleteProgressOfSource(sourceId: Long)
 
+    // Programme guide (v4).
+    /** Blocking on purpose: called from the XMLTV parser's sink, on the import thread, one short transaction per batch. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE) fun insertProgrammesNow(rows: List<ProgrammeEntity>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertProgrammes(rows: List<ProgrammeEntity>)
+    @Query("DELETE FROM programmes WHERE sourceId = :sourceId") suspend fun deleteProgrammes(sourceId: Long)
+    @Query("UPDATE programmes SET sourceId = :to WHERE sourceId = :from") suspend fun moveProgrammes(from: Long, to: Long)
+    @Query("DELETE FROM programmes WHERE stopMs < :beforeMs") suspend fun purgeProgrammes(beforeMs: Long)
+    @Query("SELECT COUNT(*) FROM programmes WHERE sourceId = :sourceId") suspend fun countProgrammes(sourceId: Long): Int
+    @Query("SELECT id, name, tvgId, epgKey FROM channels WHERE sourceId = :sourceId") suspend fun channelKeys(sourceId: Long): List<ChannelKeyRow>
+    @Query("SELECT DISTINCT epgKey FROM channels WHERE sourceId = :sourceId AND epgKey IS NOT NULL AND id IN (SELECT channelId FROM favorites)")
+    suspend fun favoriteEpgKeys(sourceId: Long): List<String>
+    @Query("UPDATE channels SET epgKey = :key WHERE id = :id") suspend fun setEpgKey(id: String, key: String?)
+    @Query("SELECT * FROM channels WHERE id IN (:ids)") suspend fun channelsByIds(ids: List<String>): List<ChannelEntity>
+
+    @Query("SELECT c.id AS channelId, p.* FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE p.startMs <= :nowMs AND p.stopMs > :nowMs")
+    fun onAir(nowMs: Long): Flow<List<ChannelProgrammeRow>>
+    /** For each channel with a programme on air, the first programme starting at or after its end. */
+    @Query(
+        "SELECT c.id AS channelId, n.* FROM programmes p " +
+            "JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey " +
+            "JOIN programmes n ON n.sourceId = p.sourceId AND n.channelKey = p.channelKey " +
+            "AND n.startMs = (SELECT MIN(q.startMs) FROM programmes q WHERE q.sourceId = p.sourceId AND q.channelKey = p.channelKey AND q.startMs >= p.stopMs) " +
+            "WHERE p.startMs <= :nowMs AND p.stopMs > :nowMs"
+    )
+    fun upNext(nowMs: Long): Flow<List<ChannelProgrammeRow>>
+    @Query("SELECT p.* FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE c.id = :channelId AND p.stopMs > :fromMs AND p.startMs < :toMs ORDER BY p.startMs")
+    fun programmesOf(channelId: String, fromMs: Long, toMs: Long): Flow<List<ProgrammeEntity>>
+    @Query("SELECT c.id AS channelId, p.* FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE p.stopMs > :nowMs AND p.searchTitle LIKE :pattern ESCAPE '\\' ORDER BY p.startMs, c.id LIMIT :limit")
+    fun searchProgrammes(pattern: String, nowMs: Long, limit: Int): Flow<List<ChannelProgrammeRow>>
+    @Query("SELECT COUNT(*) FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE p.stopMs > :nowMs AND p.searchTitle LIKE :pattern ESCAPE '\\'")
+    fun countProgrammes(pattern: String, nowMs: Long): Flow<Int>
+    /** A guide key with a programme ending after [afterMs], for the short-EPG cache check. */
+    @Query("SELECT MAX(stopMs) FROM programmes WHERE sourceId = :sourceId AND channelKey = :channelKey AND stopMs > :afterMs") suspend fun lastStop(sourceId: Long, channelKey: String, afterMs: Long): Long?
+
+    /** Swaps the staged guide (`-sourceId`) in for the current one. */
+    @Transaction
+    suspend fun commitProgrammes(sourceId: Long) {
+        deleteProgrammes(sourceId)
+        moveProgrammes(-sourceId, sourceId)
+    }
+
     /** Replaces one source's films, series and VOD categories. Favourites of items that are still there survive. */
     @Transaction
     suspend fun replaceVod(sourceId: Long, catalog: VodCatalog) {
@@ -287,6 +374,8 @@ interface CatalogDao {
     @Transaction
     suspend fun deleteSourceContent(sourceId: Long) {
         deleteChannels(sourceId)
+        deleteProgrammes(sourceId)
+        deleteProgrammes(-sourceId)
         deleteSeasonsOfSource(sourceId)
         deleteEpisodesOfSource(sourceId)
         deleteMovies(sourceId)
@@ -319,9 +408,10 @@ class VodCatalog(val movieCategories: List<Category>, val movies: List<Movie>, v
 @Database(
     entities = [
         SourceEntity::class, CategoryEntity::class, ChannelEntity::class, FavoriteEntity::class,
-        VodCategoryEntity::class, MovieEntity::class, SeriesEntity::class, SeasonEntity::class, EpisodeEntity::class, ProgressEntity::class
+        VodCategoryEntity::class, MovieEntity::class, SeriesEntity::class, SeasonEntity::class, EpisodeEntity::class, ProgressEntity::class,
+        ProgrammeEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class MiptvDatabase : RoomDatabase() {
@@ -376,8 +466,27 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/**
+ * v4 (Sprint 4, lot 2): guide columns on `sources`, guide key on `channels` (seeded from `tvgId`) and the `programmes`
+ * table. Statements as exported in `4.json`.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE sources ADD COLUMN epgUrl TEXT")
+        db.execSQL("ALTER TABLE sources ADD COLUMN epgRefreshedAt INTEGER")
+        db.execSQL("ALTER TABLE sources ADD COLUMN epgError TEXT")
+        db.execSQL("ALTER TABLE sources ADD COLUMN programmeCount INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE channels ADD COLUMN epgKey TEXT")
+        db.execSQL("UPDATE channels SET epgKey = tvgId WHERE tvgId IS NOT NULL AND tvgId != ''")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_channels_sourceId_epgKey` ON `channels` (`sourceId`, `epgKey`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `programmes` (`sourceId` INTEGER NOT NULL, `channelKey` TEXT NOT NULL, `startMs` INTEGER NOT NULL, `stopMs` INTEGER NOT NULL, `title` TEXT NOT NULL, `description` TEXT, `category` TEXT, `episode` TEXT, `searchTitle` TEXT NOT NULL, PRIMARY KEY(`sourceId`, `channelKey`, `startMs`))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_programmes_stopMs` ON `programmes` (`stopMs`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_programmes_startMs` ON `programmes` (`startMs`)")
+    }
+}
+
 /** Every migration, in order, for `Room.databaseBuilder`. Declared after the migrations: top-level values initialise in file order. */
-val MIGRATIONS = arrayOf<Migration>(MIGRATION_1_2, MIGRATION_2_3)
+val MIGRATIONS = arrayOf<Migration>(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
 /** LIKE pattern matching [text] anywhere in a [searchKey]; `%`, `_` and the escape character are literal. */
 fun likePattern(text: String): String =
@@ -490,10 +599,13 @@ class RoomChannelRepository(
     private val database: MiptvDatabase,
     private val loader: PlaylistLoader,
     private val xtream: XtreamClient = HttpXtreamClient(),
-    private val cipher: SecretCipher = KeystoreSecretCipher()
+    private val cipher: SecretCipher = KeystoreSecretCipher(),
+    private val clock: () -> Long = { System.currentTimeMillis() }
 ) : ChannelRepository {
     private val dao = database.catalog()
     private val mutex = Mutex()
+    /** When `get_short_epg` was last fetched per channel; emptied whenever a source's guide is replaced. */
+    private val shortEpgFetched = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     override val categories: Flow<List<Category>> = dao.categories().map { list -> list.map { Category(it.id, it.name) } }
     override val favoriteIds: Flow<Set<String>> = dao.favoriteIds().map { it.toHashSet() }
@@ -520,11 +632,14 @@ class RoomChannelRepository(
         when (val result = import(source)) {
             is ImportOutcome.Failure -> ImportResult.Failure(result.message)
             is ImportOutcome.Success -> {
+                val stored = result.source.copy(epgUrl = result.live.epgUrl)
                 database.withTransaction {
-                    dao.insertSource(SourceEntity.from(result.source))
+                    dao.insertSource(SourceEntity.from(stored))
                     dao.replaceChannels(source.id, result.live)
                 }
-                ImportResult.Success(result.source)
+                // The guide is a bonus: its outcome lands on the source row, not on the import result.
+                if (stored.epgUrl != null) importGuide(source.id)
+                ImportResult.Success(dao.source(source.id)?.toSource() ?: stored)
             }
         }
     }
@@ -569,12 +684,15 @@ class RoomChannelRepository(
                 ImportResult.Failure(result.message)
             }
             is ImportOutcome.Success -> {
+                // A playlist keeps the guide address the user set; otherwise the header's one is taken.
+                val stored = result.source.copy(epgUrl = source.epgUrl ?: result.live.epgUrl)
                 database.withTransaction {
-                    dao.updateSource(SourceEntity.from(result.source, entity.encryptedPassword))
+                    dao.updateSource(SourceEntity.from(stored, entity.encryptedPassword))
                     dao.replaceChannels(id, result.live)
                     if (source.kind == SourceKind.XTREAM) dao.replaceVod(id, result.vod)
                 }
-                ImportResult.Success(result.source)
+                if (stored.hasGuide) importGuide(id)
+                ImportResult.Success(dao.source(id)?.toSource() ?: stored)
             }
         }
     }
@@ -653,6 +771,132 @@ class RoomChannelRepository(
     override suspend fun saveProgress(itemId: String, positionMs: Long, durationMs: Long) =
         dao.upsertProgress(ProgressEntity(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), System.currentTimeMillis()))
     override suspend fun clearProgress(itemId: String) = dao.deleteProgress(itemId)
+
+    // --- Programme guide ---
+
+    override suspend fun setEpgUrl(sourceId: Long, url: String?): ImportResult = mutex.withLock {
+        val entity = dao.source(sourceId) ?: return ImportResult.Failure("Source introuvable.")
+        if (entity.kind == SourceKind.XTREAM.name) return ImportResult.Failure("Le guide d'un fournisseur Xtream vient de son compte.")
+        val clean = url?.trim()?.ifEmpty { null }
+        if (clean != null && !clean.startsWith("http://", ignoreCase = true) && !clean.startsWith("https://", ignoreCase = true)) {
+            return ImportResult.Failure("Seules les adresses http:// et https:// sont acceptées.")
+        }
+        if (clean == null) {
+            database.withTransaction {
+                dao.deleteProgrammes(sourceId)
+                dao.deleteProgrammes(-sourceId)
+                dao.updateSource(entity.copy(epgUrl = null, epgRefreshedAt = null, epgError = null, programmeCount = 0))
+            }
+            return ImportResult.Success(dao.source(sourceId)!!.toSource())
+        }
+        dao.updateSource(entity.copy(epgUrl = clean))
+        importGuide(sourceId)
+    }
+
+    override suspend fun refreshEpg(sourceId: Long): ImportResult = mutex.withLock { importGuide(sourceId) }
+
+    /**
+     * Downloads and stores the guide of a source: a playlist's XMLTV file, or the provider's `xmltv.php` kept to the
+     * favourite channels. Rows are staged under `-sourceId` while the file streams, then swapped in; the outcome goes
+     * on the source row (`epgRefreshedAt`, `programmeCount`, `epgError`). A failure keeps the previous programmes.
+     * Callers hold [mutex].
+     */
+    private suspend fun importGuide(sourceId: Long): ImportResult {
+        val entity = dao.source(sourceId) ?: return ImportResult.Failure("Source introuvable.")
+        val now = clock()
+        val xtreamSource = entity.kind == SourceKind.XTREAM.name
+        try {
+            val location: String
+            var filter: ((String) -> Boolean)? = null
+            if (xtreamSource) {
+                val account = when (val credentials = credentials(entity)) {
+                    is Credentials.Unavailable -> throw EpgException(credentials.message)
+                    is Credentials.Ready -> credentials.account
+                }
+                val keys = dao.favoriteEpgKeys(sourceId).toHashSet()
+                location = account.xmltvUrl()
+                filter = { it in keys }
+                if (keys.isEmpty()) {
+                    // Nothing to download: the guide of a provider follows its favourites.
+                    database.withTransaction {
+                        dao.deleteProgrammes(sourceId)
+                        dao.updateSource(entity.copy(epgRefreshedAt = now, epgError = null, programmeCount = 0))
+                    }
+                    shortEpgFetched.clear()
+                    return ImportResult.Success(dao.source(sourceId)!!.toSource())
+                }
+            } else {
+                location = entity.epgUrl ?: return ImportResult.Failure("Aucune adresse de guide pour cette source.")
+            }
+            dao.deleteProgrammes(-sourceId)
+            val parser = XmltvParser(sourceId, fromMs = now - EpgWindow.BEFORE_MS, toMs = now + EpgWindow.AFTER_MS, channelFilter = filter)
+            val stream = loader.open(location, SourceKind.URL)
+            val result = withContext(Dispatchers.IO) {
+                stream.use { input -> parser.parse(input) { batch -> dao.insertProgrammesNow(batch.map { ProgrammeEntity.from(it, -sourceId) }) } }
+            }
+            database.withTransaction {
+                dao.commitProgrammes(sourceId)
+                if (!xtreamSource) matchGuideKeys(sourceId, result.channels)
+                dao.purgeProgrammes(now - EpgWindow.PURGE_AFTER_MS)
+                dao.updateSource(entity.copy(epgRefreshedAt = now, epgError = null, programmeCount = dao.countProgrammes(sourceId)))
+            }
+            shortEpgFetched.clear()
+            return ImportResult.Success(dao.source(sourceId)!!.toSource())
+        } catch (error: Exception) {
+            dao.deleteProgrammes(-sourceId)
+            val message = describeEpgError(error)
+            dao.updateSource(entity.copy(epgError = message))
+            return ImportResult.Failure(message)
+        }
+    }
+
+    /** Playlist channels get the guide channel their `tvg-id` or display name designates (see [guideKey]). */
+    private suspend fun matchGuideKeys(sourceId: Long, guideChannels: List<EpgChannel>) {
+        val guideIds = guideChannels.mapTo(HashSet()) { it.id }
+        val byName = guideNameIndex(guideChannels)
+        for (row in dao.channelKeys(sourceId)) {
+            val key = guideKey(row.tvgId, row.name, guideIds, byName)
+            if (key != row.epgKey) dao.setEpgKey(row.id, key)
+        }
+    }
+
+    override fun nowAndNext(nowMs: Long): Flow<Map<String, NowNext>> =
+        combine(dao.onAir(nowMs), dao.upNext(nowMs)) { onAir, upNext ->
+            val next = upNext.associate { it.channelId to it.programme.toProgramme() }
+            onAir.associate { it.channelId to NowNext(it.programme.toProgramme(), next[it.channelId]) }
+        }
+
+    override fun programmes(channelId: String, fromMs: Long, toMs: Long): Flow<List<Programme>> =
+        dao.programmesOf(channelId, fromMs, toMs).map { list -> list.map { it.toProgramme() } }
+
+    override fun searchProgrammes(text: String, nowMs: Long, limit: Int): Flow<List<ProgrammeHit>> {
+        if (text.isBlank()) return flowOf(emptyList())
+        return dao.searchProgrammes(likePattern(text), nowMs, limit).map { rows ->
+            val channels = dao.channelsByIds(rows.map { it.channelId }.distinct()).associate { it.id to it.toChannel() }
+            rows.mapNotNull { row -> channels[row.channelId]?.let { ProgrammeHit(row.programme.toProgramme(), it) } }
+        }
+    }
+
+    override fun countProgrammes(text: String, nowMs: Long): Flow<Int> =
+        if (text.isBlank()) flowOf(0) else dao.countProgrammes(likePattern(text), nowMs)
+
+    override suspend fun ensureShortEpg(channelId: String): Boolean {
+        val entity = dao.channel(channelId) ?: return false
+        val ref = XtreamStreamRef.parse(entity.streamUrl) ?: return false
+        val key = entity.epgKey ?: "stream:${ref.streamId}".also { dao.setEpgKey(channelId, it) }
+        val now = clock()
+        val fetchedAt = shortEpgFetched[channelId]
+        // Programmes still running (from the favourites' XMLTV, or a fresh short EPG) are enough.
+        if (dao.lastStop(ref.sourceId, key, now) != null && (fetchedAt == null || now - fetchedAt < EpgWindow.SHORT_EPG_TTL_MS)) return false
+        val account = (credentials(ref.sourceId) as? Credentials.Ready)?.account ?: return false
+        val programmes = try { xtream.shortEpg(account, ref.sourceId, ref.streamId, key, EpgWindow.SHORT_EPG_LIMIT) } catch (_: Exception) { return false }
+        shortEpgFetched[channelId] = now
+        if (programmes.isEmpty()) return false
+        dao.insertProgrammes(programmes.map { ProgrammeEntity.from(it, ref.sourceId) })
+        return true
+    }
+
+    override suspend fun purgeProgrammes() = dao.purgeProgrammes(clock() - EpgWindow.PURGE_AFTER_MS)
 
     private sealed interface Credentials {
         class Ready(val account: XtreamAccount) : Credentials
