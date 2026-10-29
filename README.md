@@ -45,7 +45,7 @@ Un module `app` et un MVVM pragmatique, sans Hilt, Retrofit ni OkHttp direct :
 
 ### Choix de persistance : Room
 
-Room a été préféré à DataStore parce que le catalogue peut compter des dizaines de milliers de chaînes : l'écriture est transactionnelle et par lots (remplacement des chaînes d'une seule source sans toucher aux autres), les favoris sont une table séparée reliée par identifiant stable, et les catégories sont partagées entre sources puis purgées lorsqu'elles deviennent orphelines. DataStore aurait imposé de sérialiser et de réécrire tout le catalogue à chaque changement de favori. Le coût est le plugin KSP (`2.0.21-1.0.28`, aligné sur Kotlin 2.0.21) et `room-compiler`. Le schéma n'est pas exporté (`exportSchema = false`) ; une migration sera ajoutée avec la première évolution de schéma.
+Room a été préféré à DataStore parce que le catalogue peut compter des dizaines de milliers de chaînes : l'écriture est transactionnelle et par lots (remplacement des chaînes d'une seule source sans toucher aux autres), les favoris sont une table séparée reliée par identifiant stable, et les catégories sont partagées entre sources puis purgées lorsqu'elles deviennent orphelines. DataStore aurait imposé de sérialiser et de réécrire tout le catalogue à chaque changement de favori. Le coût est le plugin KSP (`2.0.21-1.0.28`, aligné sur Kotlin 2.0.21) et `room-compiler`. Le schéma est exporté par le plugin Gradle Room dans `app/schemas` (versionné) et embarqué dans l'APK de test : `MigrationTest` ouvre une base v1 remplie à partir de ce fichier, et chaque version future y ajoutera sa migration. La CI échoue si le schéma généré diffère de celui du dépôt.
 
 ### Versions et manifeste
 
@@ -61,7 +61,7 @@ Les adresses de playlist peuvent contenir des identifiants : elles ne sont jamai
 
 28 tests unitaires : parseur M3U (attributs, valeurs manquantes, lignes vides, BOM, `#EXTVLCOPT`, retours chariot Windows, titres avec virgules, identifiants stables, fusion des groupes, playlist de 25 000 chaînes) ; ViewModel (catalogue, catégories, sélection, recherche, filtre, restauration sans autoplay, ajout/actualisation/suppression de source, erreurs, plein écran, favoris) ; messages d'erreur de lecture. Les tests ViewModel utilisent `MemoryChannelRepository` avec un chargeur factice et un `StandardTestDispatcher`.
 
-Tests instrumentés : six tests Compose (cinq onglets, filtrage par catégorie et recherche, écran Sources avec adresse invalide puis valide, état sans source, aperçu et plein écran, favoris) et quatre tests Room en base mémoire (persistance et réouverture, favoris conservés à l'actualisation et échec conservant les chaînes, suppression d'une source, échec d'ajout). Aucun test ne dépend du réseau.
+Tests instrumentés : six tests Compose (cinq onglets, filtrage par catégorie et recherche, écran Sources avec adresse invalide puis valide, état sans source, aperçu et plein écran, favoris) et quatre tests Room en base mémoire (persistance et réouverture, favoris conservés à l'actualisation et échec conservant les chaînes, suppression d'une source, échec d'ajout), ainsi qu'un test de migration (`MigrationTest`, base v1 remplie depuis le schéma exporté). Aucun test ne dépend du réseau.
 
 GitHub Actions (`.github/workflows/android.yml`) compile l'APK et l'APK de test, exécute tests unitaires/lint et lance les tests instrumentés sur émulateur **Pixel 2 API 35**. Aucun déploiement ni fusion automatique.
 

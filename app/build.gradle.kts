@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("androidx.room")
 }
 android {
     namespace = "com.miptv"
@@ -22,7 +23,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    // Schemas are versioned and packaged for MigrationTestHelper in instrumented tests.
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 }
+room { schemaDirectory("$projectDir/schemas") }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.core:core-ktx:1.15.0")

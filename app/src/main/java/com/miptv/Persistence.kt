@@ -101,7 +101,7 @@ interface CatalogDao {
     }
 }
 
-@Database(entities = [SourceEntity::class, CategoryEntity::class, ChannelEntity::class, FavoriteEntity::class], version = 1, exportSchema = false)
+@Database(entities = [SourceEntity::class, CategoryEntity::class, ChannelEntity::class, FavoriteEntity::class], version = 1, exportSchema = true)
 abstract class MiptvDatabase : RoomDatabase() {
     abstract fun catalog(): CatalogDao
 }
