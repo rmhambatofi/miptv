@@ -111,7 +111,11 @@ fun searchKey(text: String): String {
 
 enum class SourceKind { URL, FILE, XTREAM }
 
-/** A configured playlist. [location] is an `http(s)` URL or a persisted `content://` URI; it is never logged. */
+/**
+ * A configured source. [location] is an `http(s)` URL, a persisted `content://` URI or, for [SourceKind.XTREAM], the
+ * normalised portal address; it is never logged. The Xtream password is not part of the domain model: it is stored
+ * encrypted and read back only to build a request or a playback URL.
+ */
 data class Source(
     val id: Long,
     val name: String,
@@ -119,8 +123,38 @@ data class Source(
     val kind: SourceKind,
     val lastRefreshed: Long? = null,
     val channelCount: Int = 0,
-    val lastError: String? = null
+    val lastError: String? = null,
+    /** Xtream only. */
+    val username: String? = null,
+    /** Xtream only: account end date, epoch milliseconds; null when unlimited or unknown. */
+    val expiresAt: Long? = null,
+    val movieCount: Int = 0,
+    val seriesCount: Int = 0
 )
+
+/** What a film or series grid shows: a category or pseudo-category, narrowed by a title filter. */
+data class VodQuery(val categoryId: String = Category.ALL.id, val text: String = "") {
+    fun matches(id: String, title: String, categoryId: String, favoriteIds: Set<String>): Boolean {
+        val inCategory = when (this.categoryId) {
+            Category.ALL.id -> true
+            Category.FAVORITES.id -> id in favoriteIds
+            else -> categoryId == this.categoryId
+        }
+        return inCategory && searchKey(title).contains(searchKey(text))
+    }
+}
+
+/** Where playback of a film or an episode stopped. [itemId] is the [Movie.id] or [Episode.id]. */
+data class PlaybackProgress(val itemId: String, val positionMs: Long, val durationMs: Long, val updatedAt: Long) {
+    /** Past 95 % the item counts as watched: no "resume" offer. */
+    val finished: Boolean get() = durationMs > 0 && positionMs >= durationMs * 95 / 100
+}
+
+/** Outcome of a read that may need the provider: the value, or a French message. */
+sealed interface Fetched<out T> {
+    data class Success<T>(val value: T) : Fetched<T>
+    data class Failure(val message: String) : Fetched<Nothing>
+}
 
 sealed interface ImportResult {
     data class Success(val source: Source) : ImportResult
@@ -141,9 +175,43 @@ interface ChannelRepository {
     fun count(query: ChannelQuery): Flow<Int>
     suspend fun channel(id: String): Channel?
     suspend fun addSource(name: String, location: String, kind: SourceKind): ImportResult
+    /** Checks the account, imports live channels, films and series; the password is stored encrypted. */
+    suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult
     suspend fun refreshSource(id: Long): ImportResult
     suspend fun removeSource(id: Long)
-    suspend fun setFavorite(channelId: String, favorite: Boolean)
+    /** [itemId] is a channel, film or series id: favourites share one table. */
+    suspend fun setFavorite(itemId: String, favorite: Boolean)
+
+    // Films and series, from Xtream sources only. Lists are paged like channels; ids are prefixed per source.
+    val movieCategories: Flow<List<Category>>
+    val seriesCategories: Flow<List<Category>>
+    fun movies(query: VodQuery): Flow<PagingData<Movie>>
+    fun series(query: VodQuery): Flow<PagingData<Series>>
+    fun countMovies(query: VodQuery): Flow<Int>
+    fun countSeries(query: VodQuery): Flow<Int>
+    /** Most recently added by the provider, for the home rows. */
+    fun recentMovies(limit: Int): Flow<List<Movie>>
+    fun recentSeries(limit: Int): Flow<List<Series>>
+    suspend fun movie(id: String): Movie?
+    suspend fun series(id: String): Series?
+    suspend fun episode(id: String): Episode?
+    /** The film with synopsis, duration and year: fetched from the provider once, then served from the base. */
+    suspend fun movieDetails(id: String): Fetched<Movie>
+    /** Seasons and episodes: fetched on the first opening, cached until the source is refreshed or [refresh] is set. */
+    suspend fun seriesInfo(id: String, refresh: Boolean = false): Fetched<SeriesInfo>
+
+    /**
+     * The URL the player opens for a stored [Channel.streamUrl] or a [streamRef] of a film or episode: Xtream
+     * references get the source's credentials here and nowhere else. Null when the source is gone or its
+     * password can no longer be read. Plain URLs come back unchanged.
+     */
+    suspend fun playbackUrl(streamUrl: String): String?
+
+    /** Resume positions, most recent first. */
+    val progress: Flow<List<PlaybackProgress>>
+    suspend fun progress(itemId: String): PlaybackProgress?
+    suspend fun saveProgress(itemId: String, positionMs: Long, durationMs: Long)
+    suspend fun clearProgress(itemId: String)
 }
 
 /** Parsed playlist, before it is attached to a stored source. */

@@ -120,6 +120,18 @@ Lot testable sans appareil ni compte : aucun réseau, réponses JSON enregistré
 
 Écarts par rapport au plan, consignés dans `SPRINT3.md` : lecteur JSON maison au lieu d'`android.util.JsonReader` (stub dans les tests locaux), et référence `xtream://` stockée dans `Channel.streamUrl` pour que la table `channels` ne contienne jamais d'identifiant.
 
+## Sprint 3 — lot 2 : identifiants chiffrés et persistance Room v3 (29 octobre 2026)
+
+Toujours sans réseau ni compte : faux client Xtream (`FakeXtreamClient`, réponses enregistrées passées dans les vrais parseurs) et clé AES générée sur place à la place du Keystore.
+
+- Unitaires : **74/74** (9 nouveaux : 3 `AesGcmCipherTest`, 4 `MemoryXtreamRepositoryTest`, 2 `XtreamViewModelTest`).
+- Instrumentés : **22/22** sur l'émulateur Pixel 2 API 35 (`CatalogPerformanceTest` ignoré sans `-e perf true`), dont 6 `XtreamRepositoryTest` et `MigrationTest` v1 → v2 → v3. Première passe : un échec dû au test lui-même (une catégorie Xtream sans chaîne est purgée par Room comme un groupe M3U vide) ; attente corrigée, 7/7 à la relance des deux classes Room.
+- Vérifié en base : la colonne `encryptedPassword` commence par `v1:` et ne contient pas le mot de passe ; `playbackUrl` reconstruit `…/live/u-test/p-test/101.ts` ; clé perdue → actualisation en échec « Identifiants à ressaisir. », catalogue conservé, `playbackUrl` nul ; compte refusé ou expiré à l'actualisation → erreur sur la source, catalogue conservé ; fiches film et série demandées une fois puis servies du cache, cache vidé par l'actualisation ; favoris et positions de reprise conservés à l'actualisation, supprimés avec la source ; après suppression, les dix tables sont vides.
+- Migration : les instructions de `MIGRATION_2_3` sont celles du schéma exporté `3.json` (vérifié par script) ; `MigrationTestHelper` valide colonnes, valeurs par défaut (`movieCount`, `seriesCount` à 0) et index.
+- Lint : **28 avertissements** (29 avant : `DataExtractionRules` résolu par les règles de sauvegarde), aucune erreur.
+
+Non vérifié ici : le Keystore réel (clé matérielle, perte après restauration) et l'exclusion effective du transfert d'appareil à appareil, qui demandent un appareil et un compte ; prévus avec la validation du lot 3 sur le Xiaomi 15.
+
 ## Sprint 2
 
 Résultats du 28 octobre 2026, code vérifié au commit `7457edb` (lot 5 ; les commits suivants ne touchent que la documentation) :

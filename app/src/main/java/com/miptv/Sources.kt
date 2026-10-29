@@ -100,7 +100,7 @@ fun describeImportError(error: Throwable): String = when (error) {
  * In-memory implementation: sources and catalog live for the process only. Used by tests and as the
  * reference behaviour for the persistent implementation. Lists are filtered in memory and served as one page.
  */
-class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepository {
+class MemoryChannelRepository(private val loader: PlaylistLoader, private val xtream: XtreamClient? = null) : ChannelRepository {
     private val mutex = Mutex()
     private val playlists = LinkedHashMap<Long, ParsedPlaylist>()
     private val favorites = LinkedHashSet<String>()
@@ -108,6 +108,16 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
     private val sourcesFlow = MutableStateFlow<List<Source>>(emptyList())
     private class Snapshot(val categories: List<Category>, val channels: List<Channel>, val favorites: Set<String>)
     private val snapshot = MutableStateFlow(Snapshot(emptyList(), emptyList(), emptySet()))
+
+    // Xtream: clear passwords stay in memory here, which is why this implementation never ships as the app's store.
+    private val accounts = HashMap<Long, XtreamAccount>()
+    private class Vod(val movieCategories: List<Category>, val movies: List<Movie>, val seriesCategories: List<Category>, val series: List<Series>)
+    private val vod = LinkedHashMap<Long, Vod>()
+    private class VodSnapshot(val movieCategories: List<Category>, val movies: List<Movie>, val seriesCategories: List<Category>, val series: List<Series>, val favorites: Set<String>)
+    private val vodSnapshot = MutableStateFlow(VodSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptySet()))
+    private val detailedMovies = HashMap<String, Movie>()
+    private val seriesInfos = HashMap<String, SeriesInfo>()
+    private val progressFlow = MutableStateFlow<List<PlaybackProgress>>(emptyList())
     override val categories: Flow<List<Category>> = snapshot.map { it.categories }.distinctUntilChanged()
     override val favoriteIds: Flow<Set<String>> = snapshot.map { it.favorites }.distinctUntilChanged()
     override val sources: Flow<List<Source>> = sourcesFlow.asStateFlow()
@@ -134,9 +144,26 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
         result
     }
 
+    override suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult = mutex.withLock {
+        val server = normalizeXtreamServer(account.server)
+        if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return ImportResult.Failure("Serveur, identifiant et mot de passe sont requis.")
+        val normalized = account.copy(server = server, username = account.username.trim())
+        val source = Source(nextId, name, server, SourceKind.XTREAM, username = normalized.username)
+        val result = importXtream(source, normalized)
+        if (result is ImportResult.Success) {
+            nextId++
+            accounts[source.id] = normalized
+            sourcesFlow.update { it + result.source }
+            publish()
+        }
+        result
+    }
+
     override suspend fun refreshSource(id: Long): ImportResult = mutex.withLock {
         val source = sourcesFlow.value.firstOrNull { it.id == id } ?: return ImportResult.Failure("Source introuvable.")
-        val result = import(source)
+        val result = if (source.kind == SourceKind.XTREAM) {
+            accounts[id]?.let { importXtream(source, it) } ?: ImportResult.Failure(CREDENTIALS_TO_REENTER)
+        } else import(source)
         val updated = when (result) {
             is ImportResult.Success -> result.source
             is ImportResult.Failure -> source.copy(lastError = result.message)
@@ -146,19 +173,93 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
         result
     }
 
+    /** Simulates a lost Keystore key: the password of [id] can no longer be read. */
+    fun forgetPassword(id: Long) { accounts.remove(id) }
+
     override suspend fun removeSource(id: Long) = mutex.withLock {
         playlists.remove(id)
+        vod.remove(id)
+        accounts.remove(id)
+        seriesInfos.keys.removeAll { XtreamIds.sourceOf(it) == id }
+        detailedMovies.keys.removeAll { XtreamIds.sourceOf(it) == id }
+        progressFlow.update { list -> list.filterNot { XtreamIds.sourceOf(it.itemId) == id } }
         sourcesFlow.update { list -> list.filterNot { it.id == id } }
         publish()
-        // Like the Room implementation: favourites of removed channels go, those of a refreshed source stay.
+        // Like the Room implementation: favourites of removed items go, those of a refreshed source stay.
         val remaining = snapshot.value.channels.mapTo(HashSet()) { it.id }
+        vodSnapshot.value.movies.mapTo(remaining) { it.id }
+        vodSnapshot.value.series.mapTo(remaining) { it.id }
         if (favorites.retainAll(remaining)) publish()
     }
 
-    override suspend fun setFavorite(channelId: String, favorite: Boolean) = mutex.withLock {
-        if (favorite) favorites += channelId else favorites -= channelId
+    override suspend fun setFavorite(itemId: String, favorite: Boolean) = mutex.withLock {
+        if (favorite) favorites += itemId else favorites -= itemId
         publish()
     }
+
+    override val movieCategories: Flow<List<Category>> = vodSnapshot.map { it.movieCategories }.distinctUntilChanged()
+    override val seriesCategories: Flow<List<Category>> = vodSnapshot.map { it.seriesCategories }.distinctUntilChanged()
+
+    override fun movies(query: VodQuery): Flow<PagingData<Movie>> =
+        vodSnapshot.map { s -> s.movies.filter { query.matches(it.id, it.title, it.categoryId, s.favorites) } }.distinctUntilChanged().map { PagingData.from(it, COMPLETE) }
+
+    override fun series(query: VodQuery): Flow<PagingData<Series>> =
+        vodSnapshot.map { s -> s.series.filter { query.matches(it.id, it.title, it.categoryId, s.favorites) } }.distinctUntilChanged().map { PagingData.from(it, COMPLETE) }
+
+    override fun countMovies(query: VodQuery): Flow<Int> =
+        vodSnapshot.map { s -> s.movies.count { query.matches(it.id, it.title, it.categoryId, s.favorites) } }.distinctUntilChanged()
+
+    override fun countSeries(query: VodQuery): Flow<Int> =
+        vodSnapshot.map { s -> s.series.count { query.matches(it.id, it.title, it.categoryId, s.favorites) } }.distinctUntilChanged()
+
+    override fun recentMovies(limit: Int): Flow<List<Movie>> =
+        vodSnapshot.map { s -> s.movies.filter { it.addedAt != null }.sortedByDescending { it.addedAt }.take(limit) }.distinctUntilChanged()
+
+    override fun recentSeries(limit: Int): Flow<List<Series>> =
+        vodSnapshot.map { s -> s.series.filter { it.updatedAt != null }.sortedByDescending { it.updatedAt }.take(limit) }.distinctUntilChanged()
+
+    override suspend fun movie(id: String): Movie? = detailedMovies[id] ?: vodSnapshot.value.movies.firstOrNull { it.id == id }
+    override suspend fun series(id: String): Series? = seriesInfos[id]?.series ?: vodSnapshot.value.series.firstOrNull { it.id == id }
+    override suspend fun episode(id: String): Episode? = seriesInfos.values.asSequence().flatMap { it.episodes }.firstOrNull { it.id == id }
+
+    override suspend fun movieDetails(id: String): Fetched<Movie> {
+        detailedMovies[id]?.let { return Fetched.Success(it) }
+        val movie = movie(id) ?: return Fetched.Failure("Film introuvable.")
+        val account = accounts[movie.sourceId] ?: return Fetched.Failure(CREDENTIALS_TO_REENTER)
+        val client = xtream ?: return Fetched.Failure(CREDENTIALS_TO_REENTER)
+        return try {
+            Fetched.Success(client.movieDetails(account, movie).also { detailedMovies[id] = it })
+        } catch (error: Exception) {
+            Fetched.Failure(describeXtreamError(error))
+        }
+    }
+
+    override suspend fun seriesInfo(id: String, refresh: Boolean): Fetched<SeriesInfo> {
+        val cached = seriesInfos[id]
+        if (cached != null && !refresh) return Fetched.Success(cached)
+        val series = series(id) ?: return Fetched.Failure("Série introuvable.")
+        val account = accounts[series.sourceId]
+        val client = xtream
+        if (account == null || client == null) return cached?.let { Fetched.Success(it) } ?: Fetched.Failure(CREDENTIALS_TO_REENTER)
+        return try {
+            Fetched.Success(client.seriesDetails(account, series).also { seriesInfos[id] = it })
+        } catch (error: Exception) {
+            cached?.let { Fetched.Success(it) } ?: Fetched.Failure(describeXtreamError(error))
+        }
+    }
+
+    override suspend fun playbackUrl(streamUrl: String): String? {
+        val ref = XtreamStreamRef.parse(streamUrl) ?: return streamUrl
+        return accounts[ref.sourceId]?.let { ref.resolve(it) }
+    }
+
+    override val progress: Flow<List<PlaybackProgress>> = progressFlow.asStateFlow()
+    override suspend fun progress(itemId: String): PlaybackProgress? = progressFlow.value.firstOrNull { it.itemId == itemId }
+    override suspend fun saveProgress(itemId: String, positionMs: Long, durationMs: Long) {
+        val entry = PlaybackProgress(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), System.currentTimeMillis())
+        progressFlow.update { list -> listOf(entry) + list.filterNot { it.itemId == itemId } }
+    }
+    override suspend fun clearProgress(itemId: String) { progressFlow.update { list -> list.filterNot { it.itemId == itemId } } }
 
     private suspend fun import(source: Source): ImportResult = try {
         val parsed = loader.open(source.location, source.kind).use { M3uParser(source.id).parse(it) }
@@ -171,14 +272,47 @@ class MemoryChannelRepository(private val loader: PlaylistLoader) : ChannelRepos
         ImportResult.Failure(describeImportError(error))
     }
 
+    private suspend fun importXtream(source: Source, account: XtreamAccount): ImportResult {
+        val client = xtream ?: return ImportResult.Failure("Aucun fournisseur Xtream n'est configuré.")
+        return try {
+            val info = client.account(account)
+            info.blocker()?.let { return ImportResult.Failure(it) }
+            val live = client.liveCatalog(account, source.id, info.liveExtension)
+            val catalog = Vod(client.movieCategories(account, source.id), client.movies(account, source.id), client.seriesCategories(account, source.id), client.series(account, source.id))
+            if (live.channels.isEmpty() && catalog.movies.isEmpty() && catalog.series.isEmpty()) return ImportResult.Failure("Ce compte ne donne accès à aucun contenu.")
+            playlists[source.id] = live
+            vod[source.id] = catalog
+            // The season/episode cache and film details of this source are refreshed with it.
+            seriesInfos.keys.removeAll { XtreamIds.sourceOf(it) == source.id }
+            detailedMovies.keys.removeAll { XtreamIds.sourceOf(it) == source.id }
+            ImportResult.Success(source.copy(
+                lastRefreshed = System.currentTimeMillis(), channelCount = live.channels.size, lastError = null,
+                expiresAt = info.expiresAt, movieCount = catalog.movies.size, seriesCount = catalog.series.size
+            ))
+        } catch (error: Exception) {
+            ImportResult.Failure(describeXtreamError(error))
+        }
+    }
+
     private fun publish() {
         val categories = LinkedHashMap<String, Category>()
         val channels = ArrayList<Channel>()
+        val movieCategories = ArrayList<Category>()
+        val movies = ArrayList<Movie>()
+        val seriesCategories = ArrayList<Category>()
+        val series = ArrayList<Series>()
         for (id in sourcesFlow.value.map { it.id }) {
-            val parsed = playlists[id] ?: continue
-            parsed.categories.forEach { categories.putIfAbsent(it.id, it) }
-            channels += parsed.channels
+            playlists[id]?.let { parsed ->
+                parsed.categories.forEach { categories.putIfAbsent(it.id, it) }
+                channels += parsed.channels
+            }
+            vod[id]?.let { catalog ->
+                movieCategories += catalog.movieCategories; movies += catalog.movies
+                seriesCategories += catalog.seriesCategories; series += catalog.series
+            }
         }
-        snapshot.value = Snapshot(categories.values.toList(), channels, favorites.toSet())
+        val starred = favorites.toSet()
+        snapshot.value = Snapshot(categories.values.toList(), channels, starred)
+        vodSnapshot.value = VodSnapshot(movieCategories, movies, seriesCategories, series, starred)
     }
 }

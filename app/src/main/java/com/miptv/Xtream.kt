@@ -28,6 +28,9 @@ object XtreamIds {
     fun movie(sourceId: Long, streamId: Long) = "xtream:$sourceId:movie:$streamId"
     fun series(sourceId: Long, seriesId: Long) = "xtream:$sourceId:series:$seriesId"
     fun episode(sourceId: Long, episodeId: Long) = "xtream:$sourceId:episode:$episodeId"
+
+    /** The source of any id above, or null for an M3U channel id. */
+    fun sourceOf(id: String): Long? = if (id.startsWith("xtream:")) id.substringAfter(':').substringBefore(':').toLongOrNull() else null
 }
 
 /**

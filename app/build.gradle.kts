@@ -25,6 +25,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
     // Schemas are versioned and packaged for MigrationTestHelper in instrumented tests.
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    // Recorded Xtream responses and the fake client serve both local and instrumented tests.
+    sourceSets.getByName("test").java.srcDir("src/sharedTest/java")
+    sourceSets.getByName("androidTest").java.srcDir("src/sharedTest/java")
 }
 room { schemaDirectory("$projectDir/schemas") }
 dependencies {

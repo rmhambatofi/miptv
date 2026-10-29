@@ -87,7 +87,14 @@ private fun SourceCard(source: Source, busy: Boolean, refresh: () -> Unit, remov
     Card(Modifier.fillMaxWidth().testTag("source-${source.id}")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(source.name, style = MaterialTheme.typography.titleMedium)
-            Text(if (source.kind == SourceKind.URL) "Adresse · ${source.location.redactedHost()}" else "Fichier local", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                when (source.kind) {
+                    SourceKind.URL -> "Adresse · ${source.location.redactedHost()}"
+                    SourceKind.FILE -> "Fichier local"
+                    SourceKind.XTREAM -> "Xtream · ${source.location.redactedHost()}"
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Text(
                 source.lastRefreshed?.let { "${source.channelCount} chaînes · actualisé le ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))}" } ?: "Jamais actualisé",
                 style = MaterialTheme.typography.bodySmall

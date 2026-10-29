@@ -49,6 +49,18 @@ Livré dans `Domain.kt`, `Json.kt` (nouveau), `Xtream.kt` (nouveau) et `Sources.
 - Favoris étendus aux films et aux séries (table `favorites` réutilisée, identifiants préfixés).
 - **Reprise de lecture** : position par film et par épisode (table `progress`), mise à jour toutes les 10 s et à la sortie du lecteur.
 
+### Lot 2 — réalisé (29 octobre 2026)
+
+Livré dans `Secrets.kt` (nouveau), `Persistence.kt`, `Sources.kt`, `Domain.kt`, `LiveViewModel.kt`, le manifeste et `res/xml/data_extraction_rules.xml`, avec 9 tests unitaires et 7 instrumentés (6 Room + l'étape 2 → 3 de `MigrationTest`). Décisions prises en cours de route :
+
+- **Chiffrement en deux couches** : `AesGcmCipher` (JCE pur, testable sur la JVM) reçoit la clé d'une fonction ; `KeystoreSecretCipher` la fournit depuis l'Android Keystore et ne la crée qu'au chiffrement. Le déchiffrement d'une clé absente rend `null`, d'où « Identifiants à ressaisir » sur la source, sans toucher au catalogue déjà importé.
+- **Le mot de passe ne traverse que deux fonctions** : `addXtreamSource` (chiffrement) et `credentials()` du dépôt (déchiffrement pour appeler le fournisseur ou résoudre une URL via `playbackUrl`). Il n'est ni dans `Source`, ni dans `LiveState`, ni dans un `SavedStateHandle`.
+- **Pagination unifiée** : `ChannelPagingSource` devient `KeysetPagingSource<E : Ordered>` et sert aussi `movies` et `series` (index `(sourceId, position)` et `(categoryId, sourceId, position)`, colonne `searchTitle` normalisée). Les compteurs VOD passent par une `@RawQuery` observée.
+- **Caches** : `movies.detailsLoadedAt` et `series.detailsLoadedAt` marquent les fiches déjà complétées ; une actualisation de la source remplace les lignes et vide `seasons`/`episodes`, les fiches se rechargent à l'ouverture suivante. Fournisseur injoignable : le cache répond s'il existe.
+- **`progress` survit aux actualisations** (les identifiants sont stables) et disparaît avec la source (`itemId LIKE 'xtream:{id}:%'`). La mise à jour toutes les 10 s relève du lecteur, lot 3.
+- `favorites.channelId` garde son nom de colonne v1 mais accepte les identifiants de films et de séries ; la purge tient compte des trois tables.
+- Interface : `addXtreamSource` existe dans le ViewModel (message « N chaînes, M films et S séries importés »), la fiche source affiche « Xtream · hôte » ; le formulaire arrive au lot 3.
+
 ## Lot 3 — Interface
 
 - **Sources** : choix « Playlist M3U » ou « Fournisseur Xtream » ; formulaire serveur, identifiant, mot de passe masqué ; test de connexion avant l'enregistrement ; la fiche affiche l'hôte seul, l'expiration du compte et les compteurs (chaînes, films, séries).

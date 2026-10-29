@@ -176,10 +176,26 @@ class LiveViewModel(
         import { repository.addSource(name.trim().ifEmpty { "Fichier M3U" }, uri, SourceKind.FILE) }
     }
 
+    /** The password only passes through here: it is neither kept in the state nor in the saved handle. */
+    fun addXtreamSource(name: String, server: String, username: String, password: String) {
+        val normalized = normalizeXtreamServer(server)
+        if (normalized.isEmpty() || username.isBlank() || password.isEmpty()) {
+            mutable.update { it.copy(importStatus = ImportStatus(message = "Serveur, identifiant et mot de passe sont requis.", error = true)) }
+            return
+        }
+        val label = name.trim().ifEmpty { normalized.substringAfter("://").substringBefore('/').ifEmpty { "Xtream" } }
+        import { repository.addXtreamSource(label, XtreamAccount(normalized, username.trim(), password)) }
+    }
+
     fun refreshSource(id: Long) = import { repository.refreshSource(id) }
 
     fun removeSource(id: Long) {
         viewModelScope.launch { repository.removeSource(id) }
+    }
+
+    private fun importedMessage(source: Source): String = when (source.kind) {
+        SourceKind.XTREAM -> "${source.channelCount} chaînes, ${source.movieCount} films et ${source.seriesCount} séries importés depuis « ${source.name} »."
+        else -> "${source.channelCount} chaînes importées depuis « ${source.name} »."
     }
 
     private fun import(block: suspend () -> ImportResult) {
@@ -187,7 +203,7 @@ class LiveViewModel(
         mutable.update { it.copy(importStatus = ImportStatus(running = true, message = "Importation en cours…")) }
         viewModelScope.launch {
             val status = when (val result = block()) {
-                is ImportResult.Success -> ImportStatus(message = "${result.source.channelCount} chaînes importées depuis « ${result.source.name} ».")
+                is ImportResult.Success -> ImportStatus(message = importedMessage(result.source))
                 is ImportResult.Failure -> ImportStatus(message = result.message, error = true)
             }
             mutable.update { it.copy(importStatus = status) }
