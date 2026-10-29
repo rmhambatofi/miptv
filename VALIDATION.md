@@ -27,6 +27,32 @@ Ce qui suit n'est vérifiable qu'avec un vrai fournisseur et n'a pas été obser
 - compte expiré ou nombre maximal de connexions atteint sur un vrai panel (messages observés à l'actualisation et à la lecture) ;
 - hétérogénéité des panels : les parseurs sont tolérants sur les variantes connues, un panel inconnu peut en révéler d'autres.
 
+### Scénarios à jouer sur le Xiaomi 15
+
+APK debug du commit `07bf612` déposé le 29 octobre 2026 dans Téléchargements sous `miptv-0.3.0-sprint3-07bf612.apk`. Le téléphone porte alors la version du lot 0.4 (installée à 13:27) avec une base **v2** de 3 sources, 50 204 chaînes et 2 favoris. L'utilisateur manipule le téléphone et saisit lui-même ses identifiants ; l'état est lu par `uiautomator dump`, captures d'écran, `dumpsys` et copie de la base via `run-as`. La colonne Résultat se remplit au fil des scénarios.
+
+| # | Scénario | Comment | Attendu | Résultat |
+|---|---|---|---|---|
+| 1 | Mise à jour et migration 2 → 3 | Gestionnaire de fichiers → Téléchargements → toucher l'APK, confirmer. Lancer l'app, chronométrer jusqu'au résumé de l'Accueil | `lastUpdateTime` du jour ; `user_version` 3 ; les 3 sources, 50 204 chaînes et 2 favoris toujours là ; Films et Séries affichent « Aucun fournisseur Xtream » | |
+| 2 | Test de connexion refusé | Sources → « Fournisseur Xtream » → serveur, identifiant, mot de passe **faux** → « Tester la connexion » | « Identifiants refusés… » en rouge, aucune source créée | |
+| 3 | Test de connexion accepté | Corriger le mot de passe → « Tester la connexion » | « Compte active jusqu'au … · n/m connexion(s) · formats … », rien n'est enregistré | |
+| 4 | Ajout du fournisseur | « Ajouter » ; chronométrer | « N chaînes, M films et S séries importés depuis « … » » ; fiche source : « Xtream · http://hôte:port · identifiant », date de fin de compte, compteurs. En base : `encryptedPassword` commence par `v1:`, aucune occurrence du mot de passe dans `miptv.db` ni dans `logcat` | |
+| 5 | TV avec les chaînes Xtream | Onglet TV : catégories du fournisseur, filtre, lecture d'une chaîne, plein écran, rotation, retour | Logos, lecture dans les 20 s, « Chargement… » puis commandes ; `dumpsys audio` montre la piste `started` ; aucune URL dans `logcat` | |
+| 6 | Films : grille et fiche | Films → chips de catégories, filtre par titre, toucher une affiche | Grille 3 colonnes avec affiches Coil, défilement fluide (`dumpsys gfxinfo`) ; fiche avec affiche, année · durée · note, synopsis chargé en moins de 3 s | |
+| 7 | Lecture d'un film et reprise | « Lire », attendre 30 s, avancer et reculer de 10 s avec le contrôleur, plein écran, fermer le lecteur (croix), rouvrir la fiche | Lecture démarre ; ±10 s effectifs ; à la réouverture « Reprendre à N min » et « Recommencer » ; « Reprendre » repart à la position | |
+| 8 | Séries : saisons, épisodes, suivant | Séries → fiche → changer de saison → lire un épisode → « Épisode suivant » | Chips de saison avec compteurs ; liste d'épisodes (miniature, durée) ; lecture ; le bouton enchaîne sur l'épisode suivant (titre « S01E02 · … ») ; à la fin réelle d'un épisode court, le bouton apparaît aussi en plein écran | |
+| 9 | Accueil : Reprendre et récents | Revenir à l'Accueil après 7 et 8 | Rangée « Reprendre » (film et épisode, barre de progression, « Reprendre à N min »), « Films récents », « Séries récentes » ; toucher une carte Reprendre ouvre la fiche avec le lecteur à la position | |
+| 10 | Recherche groupée | Recherche → un mot présent dans une chaîne, un film et une série | Trois groupes « Chaînes · n », « Films · n », « Séries · n » ; un film ouvre sa fiche dans Films, une série dans Séries, une chaîne joue dans TV | |
+| 11 | Favoris films et séries | Étoile sur une affiche et dans une fiche ; chip « Favoris » dans Films et Séries | Les favoris apparaissent sous « Favoris » dans chaque onglet ; en base, lignes `favorites` avec `xtream:…:movie:` et `xtream:…:series:` | |
+| 12 | Redémarrage sans réimport | `am force-stop com.miptv` (adb) puis relance | Catalogue, favoris, « Reprendre » intacts ; `lastRefreshed` inchangé ; la reprise d'un film repart bien à sa position (Keystore relu) | |
+| 13 | Actualisation du fournisseur | Fiche source → « Actualiser » ; chronométrer | Compteurs et date mis à jour ; favoris et positions conservés ; rouvrir une série recharge ses saisons (cache vidé puis rempli) | |
+| 14 | Arrière-plan pendant un film | Lancer un film, bouton Accueil du téléphone, revenir | Lecture en pause au retour, reprise manuelle ; position sauvegardée (vérifiable dans `progress`) | |
+| 15 | Réseau coupé | Mode avion → « Actualiser » puis « Lire » un film | Erreur en français sur la source (« Hôte introuvable… ») et dans le lecteur (« Connexion au flux impossible… » puis « Réessayer ») ; aucun hôte, identifiant ni mot de passe dans les messages | |
+| 16 | Redémarrage du téléphone | Redémarrer, relancer l'app, lire un film | La clé Keystore survit : lecture possible sans ressaisie | |
+| 17 | Suppression du fournisseur | Fiche source → « Supprimer » | Films et Séries reviennent à « Aucun fournisseur Xtream » ; TV ne garde que les chaînes M3U ; `favorites` et `progress` du fournisseur vides ; tables `movies`, `series`, `seasons`, `episodes`, `vod_categories` vides | |
+
+Hors de portée sans second appareil : la perte de clé après restauration (scénario « Identifiants à ressaisir »), couverte par `XtreamRepositoryTest`.
+
 ## Sprint 3 — lot 0.2 : performance du catalogue (29 octobre 2026)
 
 Mesures sur une playlist générée de **50 000 chaînes** (500 groupes de 100, `tvg-id`, logo, URL), émulateur local Pixel 2 **API 35 x86_64** sur un MacBook Intel i7-1068NG7, APK **debug**. Les valeurs absolues sont pessimistes : un parsing de 100 000 lignes y prend environ 3 s, quelques centaines de millisecondes sur un ordinateur. Les comparaisons avant/après sont faites sur la même machine.
