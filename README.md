@@ -1,117 +1,257 @@
-# miptv — Sprint 5 Android smartphone
+# miptv
 
-Application native Kotlin pour **smartphones Android uniquement** (API 26+), Jetpack Compose et Material 3. Aucun lanceur Leanback, composant Android TV ni navigation D-pad. L'application nécessite un écran tactile ; les tablettes ne sont pas une cible de conception ou de validation.
+Lecteur IPTV natif pour **smartphones Android** (API 26+), écrit en Kotlin avec Jetpack Compose et Material 3. L'utilisateur y ajoute ses propres sources (playlists M3U/M3U8 ou compte Xtream Codes) et retrouve dans une seule application la TV en direct, les films, les séries, la reprise de lecture, les favoris et le guide des programmes.
 
-Le Sprint 2 a apporté les **playlists IPTV M3U/M3U8** fournies par l'utilisateur : sources, importation en flux, catalogue Live TV avec logos, lecture Media3 plein écran, favoris et persistance locale. Le Sprint 3 ajoute le **fournisseur Xtream Codes** (serveur, identifiant, mot de passe fournis par l'utilisateur) : ses chaînes en direct rejoignent l'onglet TV, ses films et séries remplacent les onglets fictifs, avec fiches, reprise de lecture et « Épisode suivant ». Le mot de passe est chiffré par une clé de l'Android Keystore et l'URL de lecture n'est construite qu'au moment de lire. Le Sprint 4 ajoute le **guide des programmes** : ce qui passe maintenant et ensuite sur chaque chaîne, le guide d'une chaîne sur quatre jours et la recherche d'un programme, à partir du fichier XMLTV d'une playlist (`url-tvg` ou adresse saisie) et de l'EPG d'un fournisseur Xtream. Le Sprint 5 garde ce guide rempli : une chaîne Xtream mise en favori reçoit aussitôt le guide complet du fournisseur, les guides se rechargent chaque jour et au lancement, et la feuille guide dit ce qu'elle ne peut pas montrer.
+L'application ne livre aucun contenu : aucune playlist, aucun compte, aucun flux ni aucun guide n'est inclus, aucun fournisseur n'est suggéré, et la licéité des sources ajoutées relève de l'utilisateur. Elle n'a ni compte, ni backend, ni télémétrie. Elle cible les téléphones à écran tactile : pas de lanceur Leanback, de composant Android TV ni de navigation D-pad, et les tablettes ne sont ni conçues ni validées.
 
-## Fonctionnalités
+Version 0.5.0 (`versionCode` 5).
 
-- **Sources** (icône engrenage, ou bouton « Sources » de l'Accueil) : deux formulaires, « Playlist M3U » (adresse `http(s)` ou fichier local `.m3u` / `.m3u8` via le sélecteur de documents, permission persistée) et « Fournisseur Xtream » (serveur, identifiant, mot de passe masqué, bouton « Tester la connexion » qui décrit le compte : statut, date de fin, connexions, formats). L'ajout d'un fournisseur vérifie d'abord le compte, puis importe chaînes, films et séries. La fiche d'une source affiche l'hôte seul, l'identifiant, l'expiration du compte, les compteurs (chaînes, films, séries), la dernière actualisation et la dernière erreur ; actualisation et suppression par source. Aucune adresse ni identifiant n'est journalisé.
-- **Importation M3U** : `#EXTINF` (`tvg-id`, `tvg-name`, `tvg-logo`, `group-title`, titre), `#EXTGRP`, `#EXTVLCOPT` (`http-user-agent`, `http-referrer` transmis au lecteur). Les groupes deviennent des catégories ; les lignes vides, le BOM, les retours chariot Windows, l'absence d'en-tête `#EXTM3U` et les attributs manquants sont tolérés. Parsing ligne à ligne sur `Dispatchers.IO`, sans charger la playlist en mémoire sous forme de chaîne.
-- **TV** : trois niveaux. La liste des catégories (« Toutes », « Favoris », puis les catégories importées, préfixe de zone `FR |` affiché à part), en liste ou en couverture ; les chaînes d'une catégorie, en liste ou en grille de logos (Coil, ou le nom court de la chaîne), avec filtre par nom derrière la loupe ; enfin le lecteur en haut et les chaînes de la catégorie qui défilent dessous (« En cours », « Toutes » revient à la liste). Retour remonte d'un niveau. État « Aucune source configurée » qui mène à l'écran d'ajout.
-- **Lecture** : un seul lecteur pour la TV, les films et les épisodes (`PlayItem`), Media3/ExoPlayer (HLS, MP4, MKV, TS…) avec commandes tactiles, chargement, message d'erreur explicite en français (réseau, code HTTP, 404, format, décodeur) et bouton « Réessayer », y compris quand un flux reste plus de 20 s en chargement alors que la lecture est demandée ; reprise automatique en cas de décalage du direct. **Plein écran** en paysage avec barres système masquées, sortie par Retour ou croix. Le lecteur est créé par chaîne, film ou épisode sélectionné, libéré au changement de sélection, de catégorie, d'onglet ou de fiche, et mis en pause en arrière-plan (reprise manuelle au retour). Le passage en plein écran ou la rotation réutilisent le même lecteur. Pour un flux Xtream, l'URL avec identifiants est construite au démarrage de la lecture (`playbackUrl`) et ne vit que dans le lecteur ; des identifiants perdus affichent « Identifiants de la source à ressaisir dans Sources ». Films et épisodes : barre de progression et saut ±10 s du contrôleur, position sauvegardée toutes les 10 s, à la fin et à la fermeture ; au-delà de 95 % le titre est « Vu ».
-- **Favoris** : signet sur chaque chaîne, « Ma liste » sur chaque fiche de film et de série ; catégorie « Favoris » dans les trois onglets. Les favoris survivent à l'actualisation d'une source grâce à des identifiants stables (`tvg-id`, sinon groupe + nom ; `xtream:{source}:…` côté Xtream).
-- **Films** : héros défilant des nouveautés, pilule « Catégories » en haut à droite qui ouvre la liste des catégories du fournisseur, filtre par titre derrière la loupe, grille de jaquettes (Coil) sur trois colonnes ; fiche plein cadre (jaquette, catégorie, année, durée, note, synopsis chargé une fois depuis `get_vod_info` puis mis en cache) avec « Regarder maintenant », ou « Reprendre à 42 min » et « Recommencer » quand une position existe, « Ma liste » et « Partager » (titre seul, jamais d'adresse) ; le lecteur prend la place de la jaquette. Sans fournisseur Xtream, l'onglet mène à l'ajout d'une source.
-- **Séries** : même écran ; fiche plein cadre avec « Reprendre S1 · E3 » (dernier épisode inachevé) ou « Regarder S1 · E1 », « Ma liste », « Partager », puces de saison, liste d'épisodes (miniature, durée, « Vu » ou position, barre de progression) ; un épisode se lit depuis la fiche, « Épisode suivant » enchaîne en cours ou à la fin, y compris en plein écran. Saisons et épisodes sont chargés à la première ouverture, puis servis du cache jusqu'à l'actualisation de la source.
-- **Persistance** : sources, catégories, chaînes, favoris, catalogue VOD, positions et programmes sont conservés dans une base Room (v4) ; le catalogue et le guide sont disponibles au redémarrage sans réimport. Les listes sont paginées depuis la base : une playlist de 50 000 chaînes n'est jamais chargée en mémoire (voir `VALIDATION.md`, Sprint 3, lot 0.2).
-- **Filtre et recherche** insensibles à la casse et aux accents (« chaine » trouve « CHAÎNE »), exécutés en SQL sur une colonne normalisée.
-- **Accueil** : héros défilant des films récents (« Lecture », « Détails »), ou, sans fournisseur Xtream, le résumé du catalogue avec « Explorer la TV » et « Sources » ; puis « Continuer le visionnage » (films et épisodes inachevés, temps restant, barre de progression, reprise en un toucher dans la fiche), « Films récents », « Séries récentes », « Chaînes favorites » (un toucher lit la chaîne, un appui long ouvre son guide, « Toutes » ouvre la catégorie Favoris) ; enfin dix chaînes « À découvrir ».
-- **Recherche** locale, insensible à la casse et aux accents, groupée en Chaînes, Films, Séries et, dès qu'une source a un guide, Programmes (à venir ou en cours), avec les compteurs ; un résultat ouvre la chaîne dans TV, la fiche dans Films ou Séries, ou le guide de la chaîne au jour du programme.
-- **Guide des programmes** : sous chaque chaîne (TV, Accueil, Recherche, aperçu, plein écran), le programme en cours avec sa barre de progression et « À suivre 20:35 · Météo », seulement quand un programme est connu. Un bouton calendrier ouvre le **guide de la chaîne** : « Lire » ou l'aperçu si elle joue déjà, puces Aujourd'hui / Demain / dates, programmes du jour avec heures, numéro d'épisode, catégorie, description dépliable, le programme en cours surligné et affiché en premier. Le lecteur et le plein écran ont aussi leur bouton calendrier ; l'Accueil montre le programme en cours sous chaque chaîne favorite. Dans Sources, une playlist reçoit son adresse XMLTV depuis l'en-tête `url-tvg` ou le champ « Guide des programmes (XMLTV) » (fichier `.xml` ou `.xml.gz`), avec l'état du guide (programmes, date, erreur) et « Actualiser le guide » ; un fournisseur Xtream suit ses favoris : mettre une chaîne en favori recharge le guide de sa source 3 s après la dernière étoile, et la feuille guide d'une chaîne hors favoris annonce un « Guide limité aux prochaines heures » avec « Ajouter aux favoris ». Les jours au-delà du dernier programme connu sont estompés, et un tel jour dit où s'arrête le guide. Le guide est réimporté avec la source, rechargé chaque jour (plus de 20 h) et au lancement (plus de 24 h) par WorkManager sur réseau non facturé, conservé de 6 h avant à 3 jours après l'import, purgé au-delà de 12 h après la fin d'un programme.
-- **Interface** : écran d'ouverture (logo, égaliseur, son d'ouverture synthétisé, ≈ 2 s, au premier lancement seulement), thème sombre (fond `#0B0D12`, surface `#181C26`, accent `#FF647C`), barre d'onglets à pastille, icônes vectorielles maison. Le lecteur d'une chaîne a ses propres commandes façon YouTube (réduire, « DIRECT », pause, son, guide, plein écran, masquées après 5 s de lecture) ; le plein écran ajoute chaîne précédente et suivante. Films et épisodes gardent le contrôleur Media3 (barre de temps, ±10 s). Prise en compte des barres système et du clavier.
+## Sommaire
 
-## Démarrer
+- [Utilisation](#utilisation)
+- [Limites connues](#limites-connues)
+- [Compiler et installer](#compiler-et-installer)
+- [Architecture](#architecture)
+- [Choix techniques](#choix-techniques)
+- [Sécurité et confidentialité](#sécurité-et-confidentialité)
+- [Tests et intégration continue](#tests-et-intégration-continue)
+- [Documents du dépôt](#documents-du-dépôt)
 
-Installer JDK 17 ou 21, Android SDK 35 et Build Tools 35.0.0. Définir `ANDROID_HOME` ou `sdk.dir` dans `local.properties` (ignoré). Le wrapper Gradle est versionné avec contrôle SHA-256 de la distribution.
+## Utilisation
+
+### Navigation
+
+Cinq onglets en bas de l'écran : **Accueil**, **TV**, **Films**, **Séries** et **Recherche**. Les sources se gèrent depuis l'icône engrenage (ou le bouton « Sources » de l'Accueil). Retour ferme d'abord le plein écran, le guide, une fiche ou l'écran Sources, puis remonte les niveaux de l'onglet TV et revient enfin à l'Accueil. Au premier lancement, un écran d'ouverture d'environ 2 s (logo, égaliseur, son synthétisé) précède l'Accueil.
+
+Le thème est sombre (fond `#0B0D12`, surface `#181C26`, accent `#FF647C`), avec une barre d'onglets à pastille et des icônes vectorielles maison. L'interface tient compte des barres système et du clavier.
+
+### Ajouter une source
+
+L'écran Sources propose deux formulaires.
+
+- **Playlist M3U** : une adresse `http(s)` ou un fichier local `.m3u` / `.m3u8` choisi dans le sélecteur de documents (la permission de lecture est conservée). Un champ facultatif « Guide des programmes (XMLTV) » accepte un fichier `.xml` ou `.xml.gz` ; sinon, l'adresse du guide vient de l'en-tête de la playlist (`url-tvg`, `x-tvg-url` ou `tvg-url`).
+- **Fournisseur Xtream** : serveur, identifiant et mot de passe (masqué). « Tester la connexion » décrit le compte : statut, date de fin, connexions autorisées, formats. L'ajout vérifie d'abord le compte (expiré, désactivé ou connexions saturées sont refusés avec un message), puis importe chaînes, films et séries.
+
+Chaque source a sa fiche : hôte seul (jamais l'adresse complète), identifiant, expiration du compte, nombre de chaînes, films et séries, dernière actualisation, dernière erreur et état du guide (nombre de programmes, date, erreur). Elle s'actualise ou se supprime individuellement. Une source dont le mot de passe ne peut plus être déchiffré (par exemple après une restauration sur un autre appareil) affiche « Identifiants à ressaisir » ; son catalogue reste consultable.
+
+Ce que lit l'importation M3U :
+
+- les attributs `#EXTINF` : `tvg-id`, `tvg-name`, `tvg-logo`, `group-title` et le titre ;
+- les lignes `#EXTGRP` ;
+- les options `#EXTVLCOPT` : `http-user-agent` et `http-referrer` sont transmis au lecteur.
+
+Les groupes deviennent des catégories. Les lignes vides, le BOM, les retours chariot Windows, l'absence d'en-tête `#EXTM3U` et les attributs manquants sont tolérés.
+
+### Accueil
+
+- En haut, les films récents en héros défilant (« Lecture », « Détails ») ; sans fournisseur Xtream, un résumé du catalogue avec « Explorer la TV » et « Sources ».
+- « Continuer le visionnage » : films et épisodes inachevés, temps restant, barre de progression, reprise en un toucher depuis la fiche.
+- « Films récents » et « Séries récentes ».
+- « Chaînes favorites », avec le programme en cours : un toucher lit la chaîne, un appui long ouvre son guide, « Toutes » ouvre la catégorie Favoris.
+- Dix chaînes « À découvrir ».
+
+### TV
+
+L'onglet a trois niveaux :
+
+1. **Les catégories** : « Toutes », « Favoris », puis les catégories importées (le préfixe de zone `FR |` est affiché à part), en liste ou en couverture.
+2. **Les chaînes d'une catégorie** : en liste ou en grille de logos (ou le nom court de la chaîne quand il n'y a pas de logo), avec un filtre par nom derrière la loupe. Sous chaque chaîne s'affiche le programme en cours avec sa progression et « À suivre 20:35 · Météo », quand le guide le connaît.
+3. **Le lecteur** en haut, avec les chaînes de la catégorie qui défilent dessous (« En cours » ; « Toutes » revient à la liste).
+
+Sans source, l'onglet affiche « Aucune source configurée » et mène à l'ajout.
+
+### Films et Séries
+
+Les deux onglets ont la même structure : héros défilant des nouveautés, pilule « Catégories » qui ouvre les catégories du fournisseur, filtre par titre derrière la loupe et grille de jaquettes sur trois colonnes. Sans fournisseur Xtream, ils mènent à l'ajout d'une source.
+
+- **Fiche film** : jaquette plein cadre, catégorie, année, durée, note et synopsis (chargé une fois, puis gardé en cache). Les boutons sont « Regarder maintenant », ou « Reprendre à 42 min » et « Recommencer » quand une position existe, puis « Ma liste » et « Partager ». Le partage envoie le titre seul, jamais d'adresse. Le lecteur prend la place de la jaquette.
+- **Fiche série** : « Reprendre S1 · E3 » (dernier épisode inachevé) ou « Regarder S1 · E1 », « Ma liste », « Partager », puces de saison et liste d'épisodes (miniature, durée, « Vu » ou position, barre de progression). « Épisode suivant » enchaîne en cours de lecture ou à la fin, y compris en plein écran. Saisons et épisodes sont chargés à la première ouverture, puis servis du cache jusqu'à l'actualisation de la source.
+
+### Lecture
+
+Un seul lecteur Media3/ExoPlayer sert la TV, les films et les épisodes : HLS, MP4, MKV, TS et les autres formats d'ExoPlayer.
+
+- **TV** : commandes propres, dans le style de YouTube : réduire, « DIRECT », pause, son, guide et plein écran. Elles se masquent après 5 s de lecture. Le plein écran ajoute chaîne précédente et suivante. Un décalage du direct est rattrapé automatiquement.
+- **Films et épisodes** : contrôleur Media3 avec barre de temps et sauts de ±10 s. La position est sauvegardée toutes les 10 s, à la fin et à la fermeture ; au-delà de 95 %, le titre est « Vu ».
+- **Plein écran** en paysage, barres système masquées ; sortie par Retour ou par la croix. La rotation et le passage en plein écran réutilisent le même lecteur.
+- **Erreurs** : un message explicite en français (réseau, code HTTP, 404, format, décodeur) avec « Réessayer », y compris quand un flux reste plus de 20 s en chargement.
+
+Le lecteur est libéré au changement de sélection, de catégorie, d'onglet ou de fiche, et mis en pause quand l'application passe en arrière-plan (la reprise est manuelle).
+
+### Guide des programmes
+
+Le programme en cours et le suivant s'affichent sous chaque chaîne : dans TV, l'Accueil, la Recherche, l'aperçu et le plein écran. Un bouton calendrier, sur la chaîne comme dans le lecteur, ouvre le **guide de la chaîne** :
+
+- « Lire », ou l'aperçu si la chaîne joue déjà ;
+- des puces Aujourd'hui, Demain puis les dates suivantes ;
+- les programmes du jour avec leurs heures, le numéro d'épisode, la catégorie et une description dépliable ; le programme en cours est surligné et affiché en premier.
+
+Les jours au-delà du dernier programme connu sont estompés (annoncés « Sans programme » aux lecteurs d'écran). Un tel jour affiche « Pas encore de programmes pour ce jour : le guide connu s'arrête demain à 15:20. »
+
+D'où vient le guide :
+
+- **Playlist M3U** : le fichier XMLTV désigné par l'en-tête de la playlist ou par le champ de la fiche source. « Actualiser le guide » le recharge.
+- **Fournisseur Xtream** : le guide complet du fournisseur (`xmltv.php`) est chargé pour les **chaînes favorites** uniquement. Mettre une chaîne en favori recharge le guide de sa source 3 s après la dernière étoile, sans passer par Sources ; le résultat s'affiche sur la fiche source. Les autres chaînes reçoivent leurs prochains programmes à la demande (`get_short_epg`) quand on les sélectionne ou qu'on ouvre leur guide. La feuille guide d'une chaîne hors favoris annonce alors un « Guide limité aux prochaines heures », avec un bouton « Ajouter aux favoris ».
+
+Le guide est réimporté avec sa source. Il est aussi rechargé automatiquement, sur réseau non facturé, une fois par jour quand il a plus de 20 h, et au lancement de l'application quand il a plus de 24 h. Il couvre de 6 h avant à 3 jours après l'import ; un programme est purgé 12 h après sa fin.
+
+### Recherche
+
+La recherche est locale et insensible à la casse et aux accents (« chaine » trouve « CHAÎNE »). Les résultats sont groupés en Chaînes, Films, Séries et, dès qu'une source a un guide, Programmes (en cours ou à venir), avec leurs compteurs. Un résultat ouvre la chaîne dans TV, la fiche dans Films ou Séries, ou le guide de la chaîne au jour du programme.
+
+### Favoris et persistance
+
+Un signet sur chaque chaîne et « Ma liste » sur chaque fiche ajoutent aux favoris, qui ont leur catégorie « Favoris » dans les trois onglets. Ils survivent à l'actualisation d'une source grâce à des identifiants stables : `tvg-id`, sinon groupe + nom pour une playlist ; `xtream:{source}:…` pour un fournisseur.
+
+Sources, catégories, chaînes, favoris, catalogue VOD, positions de lecture et programmes sont conservés sur le téléphone : tout est disponible au redémarrage sans réimport. Les listes sont lues page par page depuis la base, si bien qu'une playlist de 50 000 chaînes n'est jamais chargée en mémoire.
+
+## Limites connues
+
+- **Guide Xtream hors favoris** : seules les chaînes favorites reçoivent le guide complet du fournisseur. Les autres n'ont que les quelques programmes de `get_short_epg`. Certains fournisseurs ne publient d'ailleurs qu'environ 25 h de programmes, même dans le guide complet.
+- **Téléphones Xiaomi (HyperOS)** : sans l'autorisation « Démarrage automatique », HyperOS retire l'actualisation quotidienne du guide quand l'application passe en arrière-plan. Le guide se recharge alors surtout au lancement (plus de 24 h).
+- **Pas encore pris en charge** : rattrapage (catch-up), rappels, grille multi-chaînes, images de programmes, Android TV et tablettes.
+
+## Compiler et installer
+
+Prérequis : JDK 17 ou 21, Android SDK 35 et Build Tools 35.0.0. Définir `ANDROID_HOME`, ou `sdk.dir` dans `local.properties` (fichier ignoré par git). Le wrapper Gradle est versionné, avec contrôle SHA-256 de la distribution ; sous Windows, utiliser `gradlew.bat`.
 
 ```sh
 ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
-# Sur un émulateur smartphone ou un téléphone connecté :
+```
+
+Sur un émulateur smartphone ou un téléphone connecté :
+
+```sh
 ./gradlew connectedDebugAndroidTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.miptv/.MainActivity
 ```
 
-Windows : `gradlew.bat`. Pas de compte, clé, backend ni configuration fournisseur : l'utilisateur fournit sa propre playlist ou son propre compte Xtream. Aucune playlist, aucun compte, aucun flux ni aucun contenu n'est livré avec l'application ; l'application ne suggère aucun fournisseur et la licéité des sources ajoutées relève de l'utilisateur.
+Aucune clé, aucun compte ni aucune configuration fournisseur n'est nécessaire à la compilation.
 
-Les tests instrumentés comptent une mesure de performance sur 50 000 chaînes, ignorée par défaut : `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.perf=true`.
+## Architecture
 
-## Architecture et versions
+Un seul module `app`, en MVVM pragmatique, sans Hilt, Retrofit ni OkHttp. `MiptvApplication` câble à la main la base Room, le chargeur de playlists, le client Xtream et le chiffrement en un seul dépôt pour tout le processus, puis planifie l'actualisation du guide. `LiveViewModel` expose un `StateFlow` que lit l'interface Compose.
 
-Un module `app` et un MVVM pragmatique, sans Hilt, Retrofit ni OkHttp direct :
+### Modèle et données
 
-- `Domain.kt` : modèles (`Category`, `Channel`, `Source`, `ImportResult`), `ChannelQuery` (catégorie + filtre) et `searchKey` (forme normalisée des noms), contrat asynchrone `ChannelRepository` (catégories, identifiants des favoris et sources en flux ; listes paginées `channels(query)` et compteurs `count(query)` ; lecture d'une chaîne ; ajout/actualisation/suppression de source, favoris), `M3uAdapter` ; modèles VOD du Sprint 3 (`Movie`, `Series`, `Season`, `Episode`, `SeriesInfo`), compte Xtream (`XtreamAccount`, `XtreamAccountInfo` avec `blocker()` : compte expiré ou désactivé, connexions saturées) et contrat `XtreamClient` (dont `shortEpg`) ; modèles du guide (`Programme`, `EpgChannel`, `NowNext`, `ProgrammeHit`, fenêtre `EpgWindow`) et méthodes de guide du dépôt (`setEpgUrl`, `refreshEpg`, `nowAndNext`, `programmes`, `searchProgrammes`, `ensureShortEpg`, `purgeProgrammes`).
-- `M3uParser.kt` : implémentation de `M3uAdapter`, parsing en flux depuis un `Reader`/`InputStream`, lecture des attributs sans expression régulière, adresse du guide (`url-tvg`, `x-tvg-url`, `tvg-url`) du premier en-tête `#EXTM3U`.
-- `Epg.kt` : `XmltvParser`, lecteur XMLTV en flux sur SAX (`javax.xml.parsers`, réel sur l'appareil et dans les tests), gzip détecté par ses octets de tête, fenêtre temporelle et filtre de chaînes appliqués pendant la lecture, programmes remis par lots à un collecteur, titres en français préférés, programmes sans fin fermés par le suivant, DTD jamais téléchargé ; rattachement des chaînes au guide (`guideKey`, `guideNameIndex`) ; `describeEpgError`.
-- `Json.kt` : `JsonStreamReader`, lecteur JSON en flux (sous-ensemble de l'API `android.util.JsonReader`, qui n'est qu'un stub dans les tests unitaires locaux) et accesseurs tolérants (`nextLongOrNull`, `forEachElement`…) pour les types incohérents des panels Xtream.
-- `Xtream.kt` : client Xtream Codes (lot 1 du Sprint 3). `XtreamParser` lit les réponses de `player_api.php` (compte, catégories, chaînes, films, fiche film, séries, fiche série avec saisons et épisodes) ; `HttpXtreamClient` les télécharge via `Http` ; `XtreamIds` fixe les identifiants `xtream:{source}:…` ; `XtreamStreamRef` remplace l'URL de lecture par `xtream://{source}/live/{id}.{ext}` et la résout avec les identifiants seulement au moment de lire ; `describeXtreamError` traduit les échecs en français sans jamais reproduire serveur, identifiant ou mot de passe. `XtreamParser.shortEpg` lit `get_short_epg` (titres et descriptions en base64, horodatages) et `xmltv.php` fournit le guide complet du compte, lu par `XmltvParser` pour les chaînes favorites.
-- `Sources.kt` : `Http` (`HttpURLConnection` avec délais et redirections manuelles, partagé par les playlists et le client Xtream), `PlaylistLoader` (`AndroidPlaylistLoader` : `Http` pour les adresses, `ContentResolver` pour les URI SAF), traduction des erreurs en messages français sans écho de l'adresse, et `MemoryChannelRepository` (implémentation mémoire, référence et support de tests).
-- `Secrets.kt` : `SecretCipher` ; `AesGcmCipher` (AES-256-GCM, nonce aléatoire par valeur, sortie `v1:` + base64) et `KeystoreSecretCipher`, dont la clé vit dans l'Android Keystore, non exportable, créée au premier chiffrement. Un déchiffrement impossible (clé perdue après restauration sur un autre appareil) rend `null`, jamais une valeur fausse, et la source passe en « Identifiants à ressaisir ».
-- `Persistence.kt` : entités, DAO et base Room (`miptv.db`, version 4, migrations `MIGRATION_1_2`, `MIGRATION_2_3` et `MIGRATION_3_4`), `KeysetPagingSource` (pagination par clé `(sourceId, position)` partagée par les chaînes, les films et les séries), `RoomChannelRepository` : sources M3U et Xtream (mot de passe chiffré en base, déchiffré seulement pour appeler le fournisseur ou construire une URL de lecture), catalogue VOD, cache des saisons et épisodes, favoris, positions de reprise et guide des programmes (table `programmes`, clé de guide des chaînes, import en flux avec table de transit, requêtes « maintenant / ensuite », guide du jour, recherche, cache de l'EPG court Xtream).
-- `LiveViewModel.kt` : état `StateFlow` (`LiveState` : catégories TV et VOD, favoris, compteurs, requêtes courantes, fiches `MovieSheet`/`SeriesSheet`, `PlayItem` en lecture, positions de reprise, rangées récentes, test de connexion, horloge `nowMs`, « maintenant / ensuite » par chaîne, chaînes favorites, `GuideSheet`, résultats et compteur de programmes), listes paginées `channels`/`searchResults`/`homeChannels`/`movies`/`series`/`searchMovies`/`searchSeries` mises en cache dans le ViewModel, validation des catégories à chaque changement, relecture de ce qui joue ou est ouvert à chaque import ou suppression, statut d'importation, plein écran, « Épisode suivant », reprise, `SavedStateHandle` (onglet, catégories, recherche, filtres, écran Sources).
-- `MainActivity.kt` : Compose Material 3, écran d'ouverture, cinq onglets, Accueil (héros, rangées), Recherche, écran Sources, hissage du lecteur unique (`rememberPlayback` sur `state.playItem`) au-dessus des deux mises en page, effet plein écran (orientation et barres système), Retour qui ferme plein écran, guide, fiche, Sources, remonte les niveaux de l'onglet TV puis revient à l'Accueil.
-- `Design.kt` : palette, icônes (`MiptvIcons`, tracés SVG de la maquette), barres d'en-tête, barre d'onglets, boutons pilule, ligne de progression, badge « DIRECT ». `Splash.kt` : écran d'ouverture et son. `TvScreens.kt` : les trois niveaux de l'onglet TV et la ligne de chaîne (`ChannelRow`).
-- `VodScreens.kt` : onglets Films et Séries (héros, menu des catégories, filtre, grille de jaquettes, états vides, fiches avec lecteur, saisons et épisodes), rangées VOD de l'Accueil, groupes Films et Séries de la Recherche.
-- `GuideScreens.kt` : ligne « maintenant / ensuite » (`NowLine`), bouton Guide, feuille guide d'une chaîne (`guideSection`), groupe Programmes de la Recherche, bloc guide de la fiche source (`SourceGuide`) ; mise en forme des heures et des jours dans `LiveViewModel.kt` (`formatTime`, `dayLabel`, `guideDaysFrom`).
-- `Preview.kt` : lecteur Media3 (`Playback`, `PlayerSurface`, `LivePlayer` et ses commandes, `Preview`, `VodPlayer`, `FullscreenPlayer`), résolution de l'URL au démarrage et à chaque « Réessayer », construction de la source de données HTTP (`User-Agent`, `Referer`), saut ±10 s, délai de chargement borné (`LoadingWatch`), sauvegarde de la position toutes les 10 s, messages d'erreur.
-- `SourcesScreen.kt` : formulaires M3U et Xtream (`SourceActions`), test de connexion, sélecteur SAF, liste des sources avec expiration, compteurs et état du guide.
-- `GuideRefresh.kt` : `refreshStaleGuides` (recharge les guides plus vieux qu'un seuil, puis purge) et `GuideRefreshWorker`, planifié en `guide-daily` (périodique, 24 h, réseau non facturé, batterie non faible) et `guide-launch` (à chaque lancement) ; aucune donnée de source dans les paramètres du travail.
-- `MiptvApplication.kt` : câblage manuel (base Room + chargeur + dépôt) et planification des travaux du guide.
+- `Domain.kt` : modèles (`Category`, `Channel`, `Source`, `ImportResult`, `Movie`, `Series`, `Season`, `Episode`, `SeriesInfo`, `Programme`, `EpgChannel`, `NowNext`, `ProgrammeHit`, `EpgWindow`), `ChannelQuery` (catégorie + filtre) et `searchKey` (forme normalisée des noms). Contrats `ChannelRepository` (catégories, favoris et sources en flux ; listes paginées et compteurs ; sources, favoris, reprise ; guide : `setEpgUrl`, `refreshEpg`, `nowAndNext`, `programmes`, `guideEnd`, `searchProgrammes`, `ensureShortEpg`, `purgeProgrammes`), `M3uAdapter` et `XtreamClient`. Compte Xtream (`XtreamAccount`, `XtreamAccountInfo` avec `blocker()`).
+- `Persistence.kt` : entités, DAO et base Room (`miptv.db`, version 4, migrations `MIGRATION_1_2` à `MIGRATION_3_4`), `KeysetPagingSource` et `RoomChannelRepository` : sources M3U et Xtream, catalogue VOD, cache des saisons et épisodes, favoris, positions de reprise et guide (table `programmes`, clé de guide des chaînes, import en flux par table de transit, « maintenant / ensuite », guide du jour, recherche, cache de l'EPG court).
+- `Sources.kt` : `Http` (`HttpURLConnection` avec délais et redirections manuelles), `PlaylistLoader` (`AndroidPlaylistLoader` : `Http` pour les adresses, `ContentResolver` pour les URI SAF), messages d'erreur en français sans écho de l'adresse, et `MemoryChannelRepository`, implémentation en mémoire qui sert de référence et de support aux tests.
+- `Secrets.kt` : `SecretCipher`, `AesGcmCipher` (AES-256-GCM, nonce aléatoire par valeur, sortie `v1:` + base64) et `KeystoreSecretCipher`, dont la clé vit dans l'Android Keystore.
+- `GuideRefresh.kt` : `refreshStaleGuides` (recharge les guides plus vieux qu'un seuil, puis purge) et `GuideRefreshWorker`.
 
-### Choix de persistance : Room
+### Lecteurs de formats
 
-Room a été préféré à DataStore parce que le catalogue peut compter des dizaines de milliers de chaînes : l'écriture est transactionnelle et par lots (remplacement des chaînes d'une seule source sans toucher aux autres), les favoris sont une table séparée reliée par identifiant stable, et les catégories sont partagées entre sources puis purgées lorsqu'elles deviennent orphelines. DataStore aurait imposé de sérialiser et de réécrire tout le catalogue à chaque changement de favori. Le coût est le plugin KSP (`2.0.21-1.0.28`, aligné sur Kotlin 2.0.21) et `room-compiler`. Le schéma est exporté par le plugin Gradle Room dans `app/schemas` (versionné) et embarqué dans l'APK de test : `MigrationTest` crée une base v1 remplie à partir de ce fichier puis la migre et la valide version par version. La CI échoue si le schéma généré diffère de celui du dépôt.
+- `M3uParser.kt` : implémentation de `M3uAdapter`, lecture en flux depuis un `Reader`/`InputStream`, attributs lus sans expression régulière, adresse du guide du premier en-tête `#EXTM3U`.
+- `Epg.kt` : `XmltvParser`, lecteur XMLTV en flux sur SAX (gzip détecté par ses octets de tête, fenêtre temporelle et filtre de chaînes appliqués pendant la lecture, programmes remis par lots, titres en français préférés, programmes sans fin fermés par le suivant, DTD jamais téléchargée) ; rattachement des chaînes au guide (`guideKey`, `guideNameIndex`) ; `resolveOverlaps` (programmes qui se chevauchent ramenés à une seule grille) ; `describeEpgError`.
+- `Json.kt` : `JsonStreamReader`, lecteur JSON en flux, et accesseurs tolérants (`nextLongOrNull`, `forEachElement`…) pour les types incohérents des panels Xtream.
+- `Xtream.kt` : `XtreamParser` (réponses de `player_api.php` : compte, catégories, chaînes, films, séries, fiches, `get_short_epg`), `HttpXtreamClient`, `XtreamIds` (identifiants `xtream:{source}:…`), `XtreamStreamRef` (référence `xtream://` résolue au moment de lire) et `describeXtreamError`.
+
+### Interface
+
+- `LiveViewModel.kt` : `LiveState` (catégories, favoris, compteurs, requêtes, fiches, `PlayItem` en lecture, positions, rangées récentes, test de connexion, horloge, « maintenant / ensuite », `GuideSheet`, résultats de recherche), listes paginées mises en cache dans le ViewModel, statut d'importation, plein écran, « Épisode suivant », rechargement du guide d'un favori Xtream, état restauré par `SavedStateHandle` (onglet, catégories, recherche, filtres, écran Sources) ; mise en forme des heures et des jours (`formatTime`, `dayLabel`, `guideDaysFrom`).
+- `MainActivity.kt` : cinq onglets, Accueil, Recherche, écran Sources, lecteur unique hissé au-dessus des mises en page, plein écran (orientation et barres système) et gestion de Retour.
+- `TvScreens.kt` : les trois niveaux de l'onglet TV et la ligne de chaîne (`ChannelRow`).
+- `VodScreens.kt` : onglets Films et Séries, fiches, saisons et épisodes, rangées VOD de l'Accueil, groupes Films et Séries de la Recherche.
+- `GuideScreens.kt` : ligne « maintenant / ensuite » (`NowLine`), bouton Guide, feuille guide (`guideSection`), groupe Programmes de la Recherche, bloc guide de la fiche source (`SourceGuide`).
+- `Preview.kt` : lecteur Media3 (`Playback`, `PlayerSurface`, `LivePlayer`, `Preview`, `VodPlayer`, `FullscreenPlayer`), résolution de l'URL au démarrage et à chaque « Réessayer », en-têtes HTTP (`User-Agent`, `Referer`), délai de chargement borné (`LoadingWatch`), sauvegarde de la position, messages d'erreur.
+- `SourcesScreen.kt` : formulaires M3U et Xtream, test de connexion, sélecteur SAF, liste des sources.
+- `Design.kt` : palette, icônes (`MiptvIcons`), en-têtes, barre d'onglets, boutons pilule, ligne de progression, badge « DIRECT ». `Splash.kt` : écran d'ouverture et son.
+
+## Choix techniques
+
+### Room plutôt que DataStore
+
+Le catalogue peut compter des dizaines de milliers de chaînes. Room écrit par lots et en transaction (les chaînes d'une source sont remplacées sans toucher aux autres), garde les favoris dans une table séparée reliée par identifiant stable et purge les catégories devenues orphelines. DataStore aurait imposé de réécrire tout le catalogue à chaque étoile. Le prix est le plugin KSP et `room-compiler`.
+
+Le schéma est exporté dans `app/schemas` (versionné) et embarqué dans l'APK de test : `MigrationTest` crée une base v1 remplie à partir de ce fichier, puis la migre et la valide version par version. La CI échoue si le schéma généré diffère de celui du dépôt.
 
 ### Listes paginées
 
-Les listes (TV, Recherche, Accueil) passent par Paging 3 (`paging-runtime`, `paging-compose`). La source Room fournie par `room-paging` a été écartée : elle compte toute la requête à chaque chargement et lit les pages par `LIMIT/OFFSET`, dont le coût croît avec la profondeur. `ChannelPagingSource` reprend chaque page après la dernière ligne lue, `(sourceId, position) > (?, ?)`, sur les index `(sourceId, position)` et `(categoryId, sourceId, position)`, et recharge autour de la chaîne affichée après une invalidation. Les favoris sont un ensemble d'identifiants séparé : cocher une étoile n'invalide que la liste et le compteur « Favoris ». SQLite ne repliant la casse qu'en ASCII, le filtre porte sur la colonne `searchName` (minuscules, sans accents), remplie à l'import et par la migration v1 → v2.
+Les listes passent par Paging 3. La source Room de `room-paging` a été écartée : elle compte toute la requête à chaque chargement et lit par `LIMIT/OFFSET`, dont le coût croît avec la profondeur. `KeysetPagingSource` reprend chaque page après la dernière ligne lue, `(sourceId, position) > (?, ?)`, sur les index `(sourceId, position)` et `(categoryId, sourceId, position)`, et recharge autour de l'élément affiché après une invalidation. Cocher une étoile n'invalide que la liste et le compteur « Favoris ».
 
-### Fournisseur Xtream : client, parsing et identifiants
+SQLite ne repliant la casse qu'en ASCII, le filtre et la recherche portent sur une colonne `searchName` (minuscules, sans accents) remplie à l'import.
 
-Le protocole Xtream Codes n'est pas normalisé : les panels livrent les nombres en chaînes, `null` ou rien, `{}` pour une liste vide, des listes indexées par identifiant, des épisodes indexés par saison ou en tableaux imbriqués. `XtreamParser` lit chaque réponse de `player_api.php` en flux avec des accesseurs tolérants et ne garde en mémoire que le résultat, ce qui tient un catalogue de plusieurs dizaines de milliers de films (30 000 en 0,4 s en test). Le lecteur JSON est maison (`JsonStreamReader`) : `android.util.JsonReader` n'est qu'un stub dans les tests unitaires locaux, et aucune dépendance n'a été ajoutée.
+### Client Xtream
 
-Les identifiants passent en paramètres de requête, comme le protocole l'impose, et nulle part ailleurs : ni journal, ni message d'erreur (`describeXtreamError` traduit refus, expiration, codes HTTP et pannes réseau en français sans les reproduire), ni modèle `Source`, ni état du ViewModel. Une chaîne stocke `xtream://{source}/live/{id}.{ext}` ; films et épisodes portent leur identifiant fournisseur et leur conteneur ; `playbackUrl` construit l'URL complète au démarrage de la lecture, qui ne vit alors que dans ExoPlayer.
-
-Le mot de passe est chiffré en AES-256-GCM avec une clé de l'Android Keystore, non exportable et créée au premier chiffrement (`KeystoreSecretCipher`) ; seul `v1:` + base64 est en base. La couche AES (`AesGcmCipher`) est testée sur la JVM avec une clé ordinaire. Une clé perdue (restauration sur un autre appareil) rend `null`, jamais une valeur fausse : la source passe en « Identifiants à ressaisir », son catalogue reste consultable, la lecture affiche « Identifiants de la source à ressaisir dans Sources ». `EncryptedSharedPreferences`, dépréciée, n'a pas été utilisée.
+Le protocole Xtream Codes n'est pas normalisé : les panels livrent les nombres en chaînes, `null` ou rien, `{}` pour une liste vide, des listes indexées par identifiant, des épisodes indexés par saison ou en tableaux imbriqués. `XtreamParser` lit chaque réponse en flux avec des accesseurs tolérants et ne garde en mémoire que le résultat (30 000 films en 0,4 s en test). Le lecteur JSON est maison parce que `android.util.JsonReader` n'est qu'un stub dans les tests unitaires locaux ; aucune dépendance n'a été ajoutée.
 
 ### Guide des programmes
 
-Deux voies alimentent la table `programmes`. Une playlist M3U désigne un fichier XMLTV, par l'en-tête `url-tvg` ou le champ de la fiche source ; un fournisseur Xtream expose `xmltv.php`, souvent des dizaines de mégaoctets pour des dizaines de milliers de chaînes, donc lu pour les seules chaînes favorites, les autres recevant leurs prochains programmes par `get_short_epg` quand on les sélectionne ou qu'on ouvre leur guide (cache de 30 min). Le fichier est lu en flux par SAX (`javax.xml.parsers`, réel sur l'appareil comme dans les tests JVM, contrairement à `XmlPullParser`), gzip ou non, avec la fenêtre `[maintenant − 6 h, maintenant + 3 jours[` et le filtre de chaînes appliqués pendant la lecture ; les programmes sont insérés par lots sous un identifiant de transit, puis échangés avec l'ancien guide en une transaction, si bien qu'un téléchargement interrompu laisse le guide précédent et inscrit l'erreur sur la source.
+Une playlist désigne un fichier XMLTV ; un fournisseur Xtream expose `xmltv.php`, souvent des dizaines de mégaoctets pour des dizaines de milliers de chaînes, lu pour les seules chaînes favorites. Le fichier est lu en flux par SAX (`javax.xml.parsers`, réel sur l'appareil comme dans les tests JVM, contrairement à `XmlPullParser`), avec la fenêtre `[maintenant − 6 h, maintenant + 3 jours[` et le filtre de chaînes appliqués pendant la lecture. Les programmes sont insérés par lots sous un identifiant de transit, puis échangés avec l'ancien guide en une transaction : un téléchargement interrompu laisse le guide précédent et inscrit l'erreur sur la source. Les programmes qui se chevauchent (grille publiée deux fois à une heure d'écart, par exemple) sont ramenés à une seule grille.
 
-Un programme rejoint une chaîne par la clé `channels.epgKey` : le `tvg-id` quand le guide déclare la chaîne, sinon la chaîne du guide portant le même nom affiché (comparaison insensible à la casse et aux accents), sinon le `tvg-id` tel quel ; une chaîne Xtream sans `epg_channel_id` prend `stream:{id}`. « Maintenant / ensuite » est une requête SQL : programmes en cours joints aux chaînes, et pour chacun le premier programme commençant à sa fin ou après. L'horloge de l'interface avance à chaque minute pleine depuis l'écran, jamais depuis le ViewModel, pour rester compatible avec les tests à temps virtuel.
+Un programme rejoint une chaîne par la clé `channels.epgKey` : le `tvg-id` quand le guide déclare la chaîne, sinon la chaîne du guide portant le même nom (insensible à la casse et aux accents), sinon le `tvg-id` tel quel ; une chaîne Xtream sans `epg_channel_id` prend `stream:{id}`. « Maintenant / ensuite » est une requête SQL ; la fin du guide d'une chaîne (`guideEnd`) aussi, sur l'index `(sourceId, channelKey, startMs)`. L'horloge de l'interface avance à chaque minute pleine depuis l'écran, jamais depuis le ViewModel, pour rester compatible avec les tests à temps virtuel.
+
+### Actualisation en arrière-plan
+
+WorkManager porte deux travaux autour de `refreshStaleGuides`, tous deux en `KEEP` et sur réseau non facturé : `guide-daily` (périodique, 24 h, batterie non faible, seuil 20 h) et `guide-launch` (une fois à chaque lancement, seuil 24 h, pour les téléphones où le travail périodique est retardé). Le travail relit les sources en base : aucune donnée de source ne transite par ses paramètres. Il finit toujours en `success`, les erreurs restant sur les fiches source.
 
 ### Un seul lecteur
 
-`PlayItem` décrit ce qui joue (chaîne, film ou épisode) ; `state.selected` (TV) et `state.vod` s'excluent, et changer d'onglet, de fiche ou ouvrir Sources arrête la lecture. Un fournisseur Xtream limite les connexions simultanées : l'aperçu et le lecteur ne peuvent donc jamais ouvrir deux flux. `rememberPlayback` résout l'URL dans un `LaunchedEffect` au démarrage et à chaque « Réessayer », puis prépare ExoPlayer avec la position de reprise ; il rapporte la position toutes les 10 s, à la fin et à la fermeture, et au-delà de 95 % le titre est « Vu ».
+`PlayItem` décrit ce qui joue (chaîne, film ou épisode) ; changer d'onglet, de fiche ou ouvrir Sources arrête la lecture. Un fournisseur Xtream limite les connexions simultanées : l'aperçu et le plein écran ne doivent jamais ouvrir deux flux. `rememberPlayback` résout l'URL au démarrage et à chaque « Réessayer », prépare ExoPlayer avec la position de reprise et rapporte la position toutes les 10 s, à la fin et à la fermeture.
 
 ### Versions et manifeste
 
-AGP 8.13.2, Gradle 8.13, Kotlin/plugin Compose/KSP 2.0.21, Compose BOM 2024.12.01, Lifecycle 2.8.7, Media3 1.5.1, Room 2.6.1, Paging 3.3.6, Coil 2.7.0, coroutines 1.9.0 sont épinglés. Compile/target SDK 35, min SDK 26, bytecode Java 17.
+AGP 8.13.2, Gradle 8.13, Kotlin, plugin Compose et KSP 2.0.21, Compose BOM 2024.12.01, Lifecycle 2.8.7, Media3 1.5.1, Room 2.6.1, Paging 3.3.6, WorkManager 2.9.1, Coil 2.7.0, coroutines 1.9.0. Compile et target SDK 35, min SDK 26, bytecode Java 17.
 
-Le manifeste autorise le trafic en clair (`usesCleartextTraffic="true"`) car la grande majorité des playlists, portails Xtream et flux IPTV sont servis en `http://`. L'activité déclare `configChanges` pour que la rotation et le passage en paysage du plein écran n'entraînent pas de recréation (le lecteur survit). `allowBackup="false"`, `dataExtractionRules` (API 31+) et `fullBackupContent` excluent toutes les données de la sauvegarde cloud et du transfert d'appareil à appareil.
+Le manifeste ne demande que `INTERNET`. Il autorise le trafic en clair (`usesCleartextTraffic="true"`) parce que la grande majorité des playlists, portails Xtream et flux IPTV sont servis en `http://`. L'activité déclare `configChanges` : la rotation et le plein écran ne recréent pas l'activité, et le lecteur survit.
 
-Version applicative 0.5.0 (`versionCode` 5). WorkManager 2.9.1 (`work-runtime-ktx`).
+## Sécurité et confidentialité
 
-### Sécurité et confidentialité
+- **Adresses** : les adresses de playlist et de guide peuvent contenir des identifiants. Elles ne sont jamais journalisées ; les messages d'erreur ne les reproduisent pas (seul le code HTTP est affiché) et l'interface n'affiche que le schéma et l'hôte.
+- **Comptes Xtream** : le mot de passe est chiffré en AES-256-GCM avec une clé de l'Android Keystore, non exportable, créée au premier chiffrement ; seul `v1:` + base64 est en base. Il n'apparaît ni dans le modèle `Source`, ni dans l'état du ViewModel, ni dans un message. Une chaîne stocke une référence `xtream://{source}/live/{id}.{ext}`, et l'URL complète n'est construite qu'au moment de lire (`playbackUrl`), puis ne vit que dans ExoPlayer ; l'adresse `xmltv.php` n'existe que le temps du téléchargement. Une clé perdue rend `null`, jamais une valeur fausse. `EncryptedSharedPreferences`, dépréciée, n'est pas utilisée.
+- **Fichiers locaux** : les URI reçoivent une permission de lecture persistée ; si elle est révoquée, l'actualisation signale « Fichier inaccessible ».
+- **Sauvegarde** : `allowBackup="false"`, `dataExtractionRules` (API 31+) et `fullBackupContent` excluent toutes les données de la sauvegarde cloud et du transfert d'appareil à appareil, puisque la clé Keystore ne suivrait pas.
+- Aucun identifiant fournisseur en dur, aucun backend, aucune télémétrie.
 
-Les adresses de playlist peuvent contenir des identifiants : elles ne sont jamais journalisées, les messages d'erreur ne les reproduisent pas (seul le code HTTP est affiché) et l'interface n'affiche que le schéma et l'hôte. Les URI de fichiers reçoivent une permission de lecture persistée ; si elle est révoquée, l'actualisation signale « Fichier inaccessible ». Aucun identifiant fournisseur en dur, aucun backend, aucune télémétrie.
+## Tests et intégration continue
 
-Les adresses de guide XMLTV suivent la même règle que les playlists : jamais journalisées, jamais reproduites dans un message ; l'adresse `xmltv.php` d'un fournisseur porte les identifiants et n'existe que le temps du téléchargement.
+Aucun test ne dépend du réseau. Les réponses Xtream enregistrées et anonymisées, le faux client Xtream et les scénarios de guide partagés vivent dans `app/src/sharedTest`, utilisé à la fois par les tests locaux et les tests instrumentés.
 
-Les comptes Xtream : le mot de passe n'est jamais en clair en base (AES-GCM, clé Keystore), n'apparaît ni dans le modèle `Source`, ni dans l'état du ViewModel, ni dans un message ; les chaînes stockent une référence `xtream://` et l'URL complète n'est construite qu'au moment de lire (`playbackUrl`). `allowBackup="false"` et `dataExtractionRules` (API 31+) excluent toutes les données de la sauvegarde cloud et du transfert d'appareil à appareil, puisque la clé Keystore ne suivrait pas.
+**122 tests unitaires** (`app/src/test`) :
 
-## Tests et vérification
+- parseurs : M3U, XMLTV, JSON, réponses Xtream (`M3uParserTest`, `XmltvParserTest`, `JsonStreamReaderTest`, `XtreamParserTest`), dont des volumes de 25 000 chaînes, 30 000 films et 100 000 programmes ;
+- `HttpXtreamClient` face à un serveur local (`XtreamClientTest`) ;
+- chiffrement AES-GCM (`AesGcmCipherTest`) ;
+- dépôts mémoire : sources Xtream et guide (`MemoryXtreamRepositoryTest`, `MemoryEpgRepositoryTest`) ;
+- programmes qui se chevauchent (`ResolveOverlapsTest`) ;
+- ViewModel : catalogue, sources, Xtream, guide (`LiveViewModelTest`, `XtreamViewModelTest`, `GuideViewModelTest`) ;
+- mise en forme et messages d'erreur de lecture (`FormatTest`, `PlaybackErrorTest`).
 
-122 tests unitaires : parseur M3U (attributs, valeurs manquantes, lignes vides, BOM, `#EXTVLCOPT`, retours chariot Windows, titres avec virgules, identifiants stables, fusion des groupes, playlist de 25 000 chaînes, lecture des attributs identique à l'ancienne expression régulière, adresse `url-tvg` de l'en-tête) ; ViewModel (catalogue, catégories, sélection, recherche, filtre insensible aux accents, compteurs, restauration sans autoplay, ajout/actualisation/suppression de source, erreurs, plein écran, favoris) ; messages d'erreur de lecture ; lecteur JSON (jetons, échappements Unicode, chaînes plus longues que le tampon, documents tronqués ou HTML, accesseurs tolérants) ; parseurs Xtream sur des réponses enregistrées et anonymisées (compte actif, illimité, refusé, expiré, banni, saturé ; catégories en tableau, `{}` ou indexées par identifiant ; chaînes sans catégorie, doublons, nombres en chaînes ; films aux champs manquants et 30 000 films en moins d'une seconde ; fiche film ; séries et fiche série avec épisodes indexés par saison ou en tableaux imbriqués) ; normalisation du serveur, construction des URL de lecture et encodage des identifiants ; messages d'erreur sans aucun identifiant ; `HttpXtreamClient` face à un serveur local sur `ServerSocket` (paramètres de requête, redirection, HTML, HTTP 503, hôte injoignable) ; chiffrement AES-GCM aller-retour, texte altéré ou clé perdue ; dépôt mémoire avec un faux client Xtream (import, refus, expiration, identifiants perdus, cache des fiches, favoris et reprise) ; ViewModel Xtream (ajout, formulaire incomplet ou refusé, test de connexion, catégories et filtres restaurés, fiche film et reprise, fiche série avec saisons et « Épisode suivant », recherche groupée, lecteur unique et fermeture des fiches avec leur source) ; formats affichés (durées, « Reprendre à », sous-titres de film, titres d'épisode, épisode suivant, seuil « Vu », filtre VOD, description du compte) ; parseur XMLTV (chaînes, décalages horaires, langues, entités, CDATA, programmes sans fin, fenêtre, filtre de chaînes, lots, gzip, HTML ou document tronqué, 100 000 programmes filtrés en flux, heures, numéros d'épisode, base64) ; `get_short_epg` ; dépôt mémoire du guide (scénarios partagés `EpgScenarios` : import et rattachement par `tvg-id`, nom et clé nue ; erreurs conservant l'ancien guide ; actualisation de la playlist ; guide des favoris Xtream et EPG court ; purge) ; programmes qui se chevauchent ramenés à une seule grille (`ResolveOverlapsTest`, et scénarios partagés pour le guide et l'EPG court) ; guides périmés rechargés (`staleGuidesAreReloaded`) et fin du guide connu (`guideEndIsTheLastKnownProgramme`) ; ViewModel du guide (favori Xtream rechargeant le guide une fois, fin du guide de la feuille, horloge et favoris, feuille guide et jours, recherche de programmes et lecture depuis le guide, adresse du guide et messages, EPG court Xtream, mise en forme des heures et des jours). Les tests ViewModel utilisent `MemoryChannelRepository` avec un chargeur factice et un `StandardTestDispatcher`, et lisent les listes paginées avec `paging-testing`.
+Les tests ViewModel utilisent `MemoryChannelRepository` avec un chargeur factice et un `StandardTestDispatcher`, et lisent les listes paginées avec `paging-testing`.
 
-Tests instrumentés : six tests Compose du Sprint 2 (cinq onglets, filtrage par catégorie et recherche, écran Sources avec adresse invalide puis valide, état sans source, aperçu et plein écran, favoris), quatre tests Compose Xtream (`XtreamPhoneTest` : formulaire avec test de connexion refusé puis accepté et ajout, grille Films → fiche → lecture → plein écran → fermeture, fiche Séries → saison → épisode → épisode suivant, rangée « Reprendre » de l'Accueil), sept tests Room en base mémoire (persistance et réouverture, favoris conservés à l'actualisation et échec conservant les chaînes, suppression d'une source, échec d'ajout, filtre SQL insensible à la casse et aux accents avec `%` et `_` littéraux, pagination par clé couvrant chaque chaîne une fois et rechargement au milieu, étoile n'invalidant que la liste « Favoris »), six tests Room sur les sources Xtream (`XtreamRepositoryTest` : import complet, mot de passe chiffré au repos et URL de lecture, clé perdue, compte refusé ou expiré, cache des fiches jusqu'à l'actualisation, favoris et reprise jusqu'à la suppression), neuf tests Room du guide (`EpgRepositoryTest`, les mêmes scénarios que le dépôt mémoire, plus la table de transit, les clés de guide en base et la purge), cinq tests Compose du guide (`GuidePhoneTest` : cartes avec programme en cours et feuille guide sur deux jours, jour estompé et jour vide, puis « Lire » ; bandeau « Guide limité » et « Ajouter aux favoris » d'une chaîne Xtream, rangée « En ce moment sur vos favoris », résultat de recherche ouvrant le guide, champ XMLTV de la fiche source), un test de migration v1 → v2 → v3 → v4 (`MigrationTest`), deux tests du lecteur Media3 face à un serveur local muet (`PlayerTimeoutTest` : erreur après la limite puis « Réessayer » ; `PlayerResolutionTest` : identifiants absents → message, « Réessayer » résout l'URL à nouveau et c'est l'URL résolue, pas la référence, qui atteint le serveur) et une mesure sur 50 000 chaînes (`CatalogPerformanceTest`, exécutée seulement avec `-e perf true`). Aucun test ne dépend du réseau.
+**41 tests instrumentés** (`app/src/androidTest`) :
 
-GitHub Actions (`.github/workflows/android.yml`) compile l'APK et l'APK de test, exécute tests unitaires/lint, vérifie que le schéma Room exporté (`app/schemas`) est bien commité et lance les tests instrumentés sur émulateur **Pixel 2 API 35**. Les réponses Xtream enregistrées et le faux client vivent dans `src/sharedTest`, partagé entre tests locaux et instrumentés. Aucun déploiement ni fusion automatique.
+- interface Compose : navigation, sources, lecture et favoris (`PhoneNavigationTest`, 6) ; parcours Xtream (`XtreamPhoneTest`, 4) ; guide (`GuidePhoneTest`, 5) ;
+- Room : catalogue et pagination (`RoomChannelRepositoryTest`, 7), sources Xtream (`XtreamRepositoryTest`, 6), guide (`EpgRepositoryTest`, 9), migrations v1 → v4 (`MigrationTest`, 1) ;
+- lecteur Media3 face à un serveur local muet (`PlayerTimeoutTest`, `PlayerResolutionTest`) ;
+- une mesure sur 50 000 chaînes (`CatalogPerformanceTest`), ignorée par défaut :
 
-Validation manuelle recommandée sur smartphone : au Sprint 3, le fournisseur Xtream de test (voir `VALIDATION.md`) ; au Sprint 4, un guide XMLTV réel pour une playlist (durée d'import, taille de la base, mémoire), l'EPG court et le guide des favoris du fournisseur, l'affichage dans TV, le lecteur, le guide, l'Accueil et la Recherche, la purge après 12 h ; au Sprint 5, le favori Xtream qui charge le guide, la feuille guide d'une chaîne hors favoris et les travaux WorkManager (`dumpsys jobscheduler`). `VALIDATION.md` tient les résultats effectifs et les scénarios à jouer.
+```sh
+./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.perf=true
+```
 
-## Historique
+**GitHub Actions** (`.github/workflows/android.yml`), sur chaque push vers `main` et chaque PR vers `main` :
 
-Sprint 1 (`main` jusqu'à la PR #3) : portage smartphone, cinq onglets, lecteur Media3 et catalogue de démonstration Blender. Sprint 2 (PR #4, branche `feature/sprint2-live-tv`) : un commit par lot (parseur, sources, catalogue, lecture, persistance) puis documentation. Sprint 3 (PR #7 et #8, branche `feature/sprint3-xtream`, plan dans `SPRINT3.md`) : dette du Sprint 2 (schéma exporté, pagination, validation sur appareil, délai de chargement), puis un commit par lot (client Xtream, identifiants chiffrés et Room v3, interface, tests et documentation). Sprint 4 (branche `feature/sprint4-epg`, plan dans `SPRINT4.md`) : guide des programmes, un commit par lot (parseurs XMLTV et EPG court, Room v4 et import du guide, interface, tests et documentation). Sprint 5 (branche `feature/sprint5-guide`, plan et bilan dans `SPRINT5.md`) : un guide qui reste rempli, un commit par lot (favori Xtream rechargeant le guide, actualisation quotidienne WorkManager, feuille guide honnête, validation et documentation).
+- `build` : tests unitaires, lint, APK et APK de test, et vérification que le schéma Room exporté est commité ;
+- `touch-tests` : tests instrumentés sur un émulateur Pixel 2 API 35. Le journal de l'émulateur (`logcat.txt`) est joint au rapport.
 
-Références d'implémentation : [barre de navigation Compose](https://developer.android.com/develop/ui/compose/components/navigation-bar), [cycle de vie ExoPlayer](https://developer.android.com/media/media3/exoplayer/hello-world), [Room](https://developer.android.com/training/data-storage/room), [migrations Room et schéma exporté](https://developer.android.com/training/data-storage/room/migrating-db-versions), [Paging 3](https://developer.android.com/topic/libraries/architecture/paging/v3-overview), [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [règles de sauvegarde](https://developer.android.com/guide/topics/data/autobackup), [Coil Compose](https://coil-kt.github.io/coil/compose/), [Storage Access Framework](https://developer.android.com/guide/topics/providers/document-provider), [format XMLTV](https://github.com/XMLTV/xmltv/blob/master/xmltv.dtd), [SAX sur Android](https://developer.android.com/reference/javax/xml/parsers/SAXParser).
+Aucun déploiement ni fusion automatique.
+
+Les tests sur appareil réel, notamment avec un vrai fournisseur Xtream et un vrai guide XMLTV, sont décrits dans `VALIDATION.md`, avec leurs résultats.
+
+## Documents du dépôt
+
+- `VALIDATION.md` : scénarios de validation sur appareil et résultats effectifs, sprint par sprint.
+- `SPRINT3.md`, `SPRINT4.md`, `SPRINT5.md` : plans et bilans des sprints.
+
+Historique en bref :
+
+- Sprint 1 : portage smartphone, cinq onglets, lecteur Media3.
+- Sprint 2 : playlists M3U, catalogue Live TV, lecture, favoris, persistance.
+- Sprint 3 : fournisseur Xtream Codes, films et séries, reprise de lecture, identifiants chiffrés.
+- Sprint 4 : guide des programmes et refonte de l'interface.
+- Sprint 5 : un guide qui reste rempli (favoris Xtream, actualisation WorkManager, feuille guide qui dit ce qui manque).
+
+Références : [barre de navigation Compose](https://developer.android.com/develop/ui/compose/components/navigation-bar), [cycle de vie ExoPlayer](https://developer.android.com/media/media3/exoplayer/hello-world), [Room](https://developer.android.com/training/data-storage/room), [migrations Room](https://developer.android.com/training/data-storage/room/migrating-db-versions), [Paging 3](https://developer.android.com/topic/libraries/architecture/paging/v3-overview), [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager), [Android Keystore](https://developer.android.com/privacy-and-security/keystore), [règles de sauvegarde](https://developer.android.com/guide/topics/data/autobackup), [Coil Compose](https://coil-kt.github.io/coil/compose/), [Storage Access Framework](https://developer.android.com/guide/topics/providers/document-provider), [format XMLTV](https://github.com/XMLTV/xmltv/blob/master/xmltv.dtd), [SAX sur Android](https://developer.android.com/reference/javax/xml/parsers/SAXParser).
