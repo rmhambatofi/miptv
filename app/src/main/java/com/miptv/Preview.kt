@@ -281,12 +281,12 @@ private const val CONTROLS_MS = 5_000L
 /**
  * Live picture with its own controls, YouTube style: a touch shows or hides them, they fade out while the
  * channel plays. Top: [onMinimize], the « DIRECT » badge and [onClose]; bottom: pause, sound, [onGuide] and fullscreen.
- * Loading and errors show in the middle, with « Réessayer ».
+ * Loading and errors show in the middle, with « Réessayer ». [onTap] receives whether a touch showed the controls.
  */
 @Composable
 fun LivePlayer(
     playback: Playback, onFullscreen: (Boolean) -> Unit, modifier: Modifier = Modifier,
-    onMinimize: (() -> Unit)? = null, onGuide: (() -> Unit)? = null, onClose: (() -> Unit)? = null
+    onMinimize: (() -> Unit)? = null, onGuide: (() -> Unit)? = null, onClose: (() -> Unit)? = null, onTap: (Boolean) -> Unit = {}
 ) {
     var visible by remember(playback) { mutableStateOf(true) }
     LaunchedEffect(visible, playback.playing) {
@@ -294,7 +294,7 @@ fun LivePlayer(
     }
     Box(modifier.background(Color.Black)) {
         PlayerSurface(playback, fullscreen = false, onFullscreen = onFullscreen, modifier = Modifier.fillMaxSize(), controller = false)
-        Box(Modifier.matchParentSize().clickable(remember { MutableInteractionSource() }, indication = null) { visible = !visible })
+        Box(Modifier.matchParentSize().clickable(remember { MutableInteractionSource() }, indication = null) { visible = !visible; onTap(visible) }.testTag("player-picture"))
         PlayerStatus(playback, Modifier.align(Alignment.Center))
         AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.matchParentSize()) {
             Box(Modifier.fillMaxSize()) {
