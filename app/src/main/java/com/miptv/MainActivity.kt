@@ -125,9 +125,11 @@ class PhoneActions(
     val resolveStream: suspend (String) -> String?,
     val saveProgress: (String, Long, Long) -> Unit,
     val nextEpisode: () -> Episode?,
-    /** TV tab levels: a category's channels, back to the categories, back from the player. */
+    /** TV tab levels: a category's channels, back to the categories; the player minimized, expanded again, closed. */
     val openCategory: (String) -> Unit,
     val closeCategory: () -> Unit,
+    val minimizePlayer: () -> Unit,
+    val expandPlayer: () -> Unit,
     val closePlayer: () -> Unit
 )
 
@@ -149,6 +151,8 @@ fun LiveViewModel.actions() = PhoneActions(
     nextEpisode = ::nextEpisode,
     openCategory = ::openCategory,
     closeCategory = ::closeCategory,
+    minimizePlayer = ::minimizePlayer,
+    expandPlayer = ::expandPlayer,
     closePlayer = ::closePlayer
 )
 
@@ -205,14 +209,16 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
     BackHandler(state.sourcesOpen) { actions.openSources(false) }
     BackHandler(guideOpen) { actions.guide.close() }
     BackHandler(sheetOpen) { actions.vod.closeSheet() }
-    BackHandler(inTv && state.selected != null) { actions.closePlayer() }
-    BackHandler(inTv && state.selected == null && state.channelsOpen) { actions.closeCategory() }
-    BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && !(inTv && (state.selected != null || state.channelsOpen)) && state.destination != Destination.HOME) {
+    // Back never stops the channel: the player gives way to the list it covered, the channels to the categories.
+    val playerShown = inTv && state.playerOpen && state.selected != null
+    BackHandler(playerShown) { actions.minimizePlayer() }
+    BackHandler(inTv && !playerShown && state.channelsOpen) { actions.closeCategory() }
+    BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && !(inTv && (playerShown || state.channelsOpen)) && state.destination != Destination.HOME) {
         actions.navigate(Destination.HOME)
     }
     Scaffold(containerColor = Palette.Ink, bottomBar = { MiptvNavBar(if (state.sourcesOpen) null else state.destination, actions.navigate) }) { padding ->
         val guide = state.guideSheet
-        val scrollState = key(state.destination, state.sourcesOpen, state.channelsOpen, state.selected != null, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
+        val scrollState = key(state.destination, state.sourcesOpen, state.channelsOpen, state.playerOpen && state.selected != null, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
         // Once the day's programmes arrive, show the one on air (or the searched one) first.
         LaunchedEffect(guideOpen, guide?.channel?.id, guide?.dayStartMs, guide?.loading) {
             if (!guideOpen || guide == null || guide.loading) return@LaunchedEffect

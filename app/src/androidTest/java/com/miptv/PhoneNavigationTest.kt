@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.espresso.Espresso
 import java.io.InputStream
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -149,9 +151,25 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag("fullscreen-player").assertIsDisplayed()
         compose.onNodeWithTag("exit-fullscreen").performClick()
         compose.onNodeWithTag("fullscreen-player").assertDoesNotExist()
+        // Under the player, another category lists its channels while the channel keeps playing.
+        val chip = model.categoryTag("sintel").replace("category-", "player-category-")
+        compose.onNodeWithTag("player-categories").performScrollToNode(hasTestTag(chip))
+        compose.onNodeWithTag(chip).performClick()
+        compose.waitUntil(5_000) { model.state.value.categoryId == channel("sintel").categoryId }
+        assertEquals("bbb", model.state.value.selected?.tvgId)
+        // Minimized: back over the channels, the mini player keeps the channel; it opens the player again.
         compose.onNodeWithTag("minimize-player").performClick()
         compose.onNodeWithTag("player-status").assertDoesNotExist()
         compose.onNodeWithTag("close-category").assertIsDisplayed()
+        compose.onNodeWithTag("mini-player").assertIsDisplayed()
+        compose.onNodeWithTag("close-category").performClick()
+        compose.onNodeWithTag("mini-player").assertIsDisplayed()
+        compose.onNodeWithTag("mini-player").performClick()
+        compose.onNodeWithTag("close-player").assertIsDisplayed()
+        // The close button stops it and leaves the list it covered.
+        compose.onNodeWithTag("close-player").performClick()
+        compose.onNodeWithTag("mini-player").assertDoesNotExist()
+        assertNull(model.state.value.selected)
         compose.onNodeWithTag("nav-HOME").performClick()
         compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
     }

@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,18 +31,26 @@ import androidx.paging.compose.itemKey
 
 /**
  * The TV tab in three levels: the list of categories, the channels of one category, then the player on top
- * with the channels of the same category scrolling under it.
+ * with the categories and their channels under it. Back lowers the player to a mini player over the list it
+ * covered; only its close button stops the channel.
  */
 @Composable
 fun ColumnScope.TvScreen(state: LiveState, channels: LazyPagingItems<Channel>, playback: Playback?, actions: PhoneActions, listState: LazyListState) {
+    // The lists keep their place while the player covers them: back returns to the category or channel left.
+    val categoriesList = rememberLazyListState()
+    val channelsList = key(state.categoryId) { rememberLazyListState() }
     when {
         state.ready && !state.hasSources -> {
             AppHeader("TV en direct", state.sourcesOpen, actions.openSources)
             ContentList(listState, padded = true) { noSourceItem(actions) }
         }
-        playback != null && state.selected != null -> PlayerPage(state, state.selected, channels, playback, actions, listState)
-        state.channelsOpen -> ChannelsPage(state, channels, actions, listState)
-        else -> CategoriesPage(state, actions, listState)
+        playback != null && state.selected != null && state.playerOpen -> PlayerPage(state, state.selected, channels, playback, actions, listState)
+        else -> {
+            Column(Modifier.weight(1f)) {
+                if (state.channelsOpen) ChannelsPage(state, channels, actions, channelsList) else CategoriesPage(state, actions, categoriesList)
+            }
+            if (playback != null && state.selected != null) MiniPlayer(state.selected, state, playback, actions)
+        }
     }
 }
 
@@ -224,25 +234,75 @@ fun ChannelRow(
 
 @Composable
 private fun ColumnScope.PlayerPage(state: LiveState, selected: Channel, channels: LazyPagingItems<Channel>, playback: Playback, actions: PhoneActions, listState: LazyListState) {
-    val category = state.categoryNames[state.categoryId] ?: Category.ALL.name
     // The picture stays on top, the rest scrolls under it.
-    LivePlayer(playback, actions.fullscreen, Modifier.fillMaxWidth().aspectRatio(16f / 9f), onMinimize = actions.closePlayer, onGuide = { actions.guide.open(selected) })
+    LivePlayer(
+        playback, actions.fullscreen, Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+        onMinimize = actions.minimizePlayer, onGuide = { actions.guide.open(selected) }, onClose = actions.closePlayer
+    )
     ContentList(listState, spacing = 0.dp) {
         item {
             Box(Modifier.drawBehind { drawLine(Palette.Raised, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx()) }) {
                 LiveInfo(selected.name, selected, state.categoryNames[selected.categoryId], state.isFavorite(selected), state.selectedNowNext, state.nowMs) { actions.toggleFavorite(selected) }
             }
         }
+        item { PlayerCategories(state, actions.category) }
         item {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("$category · ${state.visibleCount} chaînes".uppercase(), color = Palette.Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text("Toutes", color = Palette.Link, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = actions.closePlayer).padding(10.dp).testTag("all-channels"))
-            }
+            Text("${state.visibleCount} chaînes".uppercase(), color = Palette.Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 6.dp))
         }
         items(channels.itemCount, key = channels.itemKey { "up-next-${it.id}" }) { index ->
             channels[index]?.let { channel -> UpNextRow(channel, state, channel.id == selected.id) { actions.select(channel) } }
+        }
+    }
+}
+
+/** Every category as a chip under the player: another category lists its channels while the channel keeps playing. */
+@Composable
+private fun PlayerCategories(state: LiveState, onCategory: (String) -> Unit) {
+    val strip = rememberLazyListState(initialFirstVisibleItemIndex = state.categories.indexOfFirst { it.id == state.categoryId }.coerceAtLeast(0))
+    LazyRow(
+        state = strip, modifier = Modifier.padding(top = 8.dp).testTag("player-categories"),
+        contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(state.categories, key = { it.id }) { category ->
+            FilterChip(
+                selected = category.id == state.categoryId, onClick = { onCategory(category.id) },
+                label = { Text(category.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                modifier = Modifier.widthIn(max = 220.dp).testTag("player-category-${category.id}")
+            )
+        }
+    }
+}
+
+/**
+ * The channel playing under the lists, YouTube style: a touch opens the player again, pause and close stay at
+ * hand. Shown once back has lowered the player.
+ */
+@Composable
+private fun MiniPlayer(channel: Channel, state: LiveState, playback: Playback, actions: PhoneActions) {
+    Row(
+        Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel)
+            .drawBehind { drawLine(Palette.Raised, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
+            .clickable(onClick = actions.expandPlayer).testTag("mini-player"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(Modifier.fillMaxHeight().aspectRatio(16f / 9f).background(Color.Black)) {
+            PlayerSurface(playback, fullscreen = false, onFullscreen = actions.fullscreen, modifier = Modifier.fillMaxSize(), controller = false)
+            // The picture's view would keep the touch: a layer above it opens the player.
+            Box(Modifier.matchParentSize().clickable(onClick = actions.expandPlayer))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(channel.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (playback.failed) playback.status else state.nowNext[channel.id]?.now?.title ?: (state.categoryNames[channel.categoryId] ?: M3uParser.DEFAULT_GROUP),
+                fontSize = 13.sp, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = playback::togglePlay, modifier = Modifier.testTag("mini-play-pause")) {
+            Icon(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, contentDescription = if (playback.playing) "Pause" else "Lecture")
+        }
+        IconButton(onClick = actions.closePlayer, modifier = Modifier.testTag("mini-close")) {
+            Icon(MiptvIcons.Close, contentDescription = "Fermer le lecteur", tint = Palette.Muted)
         }
     }
 }

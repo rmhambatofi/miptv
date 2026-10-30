@@ -74,6 +74,8 @@ data class LiveState(
     val filter: String = "",
     /** The TV tab shows the channels of [categoryId] rather than the list of categories. */
     val channelsOpen: Boolean = false,
+    /** The TV player page covers the lists; false with a channel [selected] leaves it playing in the mini player. */
+    val playerOpen: Boolean = false,
     val sourcesOpen: Boolean = false,
     /** Only meaningful with something playing; cleared whenever playback is cleared. */
     val fullscreen: Boolean = false,
@@ -327,7 +329,7 @@ class LiveViewModel(
         // One player: changing tab stops whatever plays, as the Sprint 2 TV tab did.
         // The TV tab starts again from its list of categories.
         saved["channelsOpen"] = false
-        mutable.update { it.copy(destination = destination, selected = null, vod = null, fullscreen = false, channelsOpen = false) }
+        mutable.update { it.copy(destination = destination, selected = null, vod = null, fullscreen = false, channelsOpen = false, playerOpen = false) }
         openSources(false)
     }
 
@@ -335,7 +337,8 @@ class LiveViewModel(
         val state = mutable.value
         if (state.categories.none { it.id == id } || id == state.categoryId) return
         saved["category"] = id
-        mutable.update { it.copy(categoryId = id, selected = null, fullscreen = false) }
+        // The channel playing keeps playing: the player lists the channels of the new category under it.
+        mutable.update { it.copy(categoryId = id) }
     }
 
     /** From the list of categories (or « Toutes » on Accueil): the channels of [id], in the TV tab. */
@@ -347,19 +350,29 @@ class LiveViewModel(
         mutable.update { it.copy(channelsOpen = true) }
     }
 
-    /** Back from the channels of a category to the list of categories; playback stops. */
+    /** Back from the channels of a category to the list of categories; the channel playing keeps playing. */
     fun closeCategory() {
         saved["channelsOpen"] = false
-        mutable.update { it.copy(channelsOpen = false, selected = null, fullscreen = false) }
+        mutable.update { it.copy(channelsOpen = false) }
     }
 
-    /** Back from the player to the channels of its category. */
+    /** Back from the player to the list it covered (categories or channels); the channel keeps playing in the mini player. */
+    fun minimizePlayer() {
+        mutable.update { it.copy(playerOpen = false, fullscreen = false) }
+    }
+
+    /** The mini player opens the player page again. */
+    fun expandPlayer() {
+        mutable.update { it.copy(playerOpen = it.selected != null) }
+    }
+
+    /** The player's close button: playback stops, the list under it stays. */
     fun closePlayer() {
-        mutable.update { it.copy(selected = null, fullscreen = false) }
+        mutable.update { it.copy(selected = null, playerOpen = false, fullscreen = false) }
     }
 
     fun select(channel: Channel) {
-        mutable.update { state -> if (state.channelQuery.matches(channel, state.favoriteIds)) state.copy(selected = channel, vod = null) else state }
+        mutable.update { state -> if (state.channelQuery.matches(channel, state.favoriteIds)) state.copy(selected = channel, vod = null, playerOpen = true) else state }
         viewModelScope.launch { repository.ensureShortEpg(channel.id) }
     }
 
@@ -425,7 +438,7 @@ class LiveViewModel(
     fun openSources(open: Boolean) {
         saved["sourcesOpen"] = open
         mutable.update {
-            if (open) it.copy(sourcesOpen = true, selected = null, vod = null, fullscreen = false, guideSheet = null)
+            if (open) it.copy(sourcesOpen = true, selected = null, vod = null, fullscreen = false, playerOpen = false, guideSheet = null)
             else it.copy(sourcesOpen = false, importStatus = ImportStatus(), accountCheck = null, checkingAccount = false)
         }
     }
