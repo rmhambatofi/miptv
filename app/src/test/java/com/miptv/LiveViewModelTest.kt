@@ -39,13 +39,17 @@ class LiveViewModelTest {
         assertEquals(listOf("Toutes", "Favoris", "Animation", "Cinéma"), vm.state.value.categories.map { it.name })
     }
 
-    @Test fun categoryChangeStopsPlaybackAndHandlesEmptySelection() {
+    @Test fun categoryChangeKeepsPlaybackAndListsTheNewCategory() {
         val vm = loadedModel()
-        vm.select(vm.visible.first())
-        assertNotNull(vm.state.value.selected)
+        val playing = vm.channel("bbb")
+        vm.select(playing)
+        assertTrue(vm.state.value.playerOpen)
         vm.category(vm.categoryOf("sintel"))
-        assertNull(vm.state.value.selected)
+        assertEquals(playing, vm.state.value.selected)
+        assertTrue(vm.state.value.playerOpen)
         assertEquals(listOf("Sintel"), vm.visible.map { it.name })
+        vm.select(vm.channel("sintel"))
+        assertEquals("sintel", vm.state.value.selected?.tvgId)
     }
 
     @Test fun invalidSelectionAndCategoryAreIgnored() {
@@ -73,14 +77,24 @@ class LiveViewModelTest {
         assertEquals(Destination.TV, vm.state.value.destination)
         assertTrue(vm.state.value.channelsOpen)
         assertEquals(true, saved.get<Boolean>("channelsOpen"))
+        // Back lowers the player over the channels, then the categories; the channel keeps playing.
         vm.select(vm.channel("sintel"))
+        assertTrue(vm.state.value.playerOpen)
+        vm.minimizePlayer()
+        assertFalse(vm.state.value.playerOpen)
+        assertEquals("sintel", vm.state.value.selected?.tvgId)
+        assertTrue(vm.state.value.channelsOpen)
+        vm.closeCategory()
+        assertFalse(vm.state.value.channelsOpen)
+        assertEquals("sintel", vm.state.value.selected?.tvgId)
+        vm.expandPlayer()
+        assertTrue(vm.state.value.playerOpen)
+        // Only the close button stops it.
         vm.closePlayer()
         assertNull(vm.state.value.selected)
-        assertTrue(vm.state.value.channelsOpen)
-        vm.select(vm.channel("sintel"))
-        vm.closeCategory()
-        assertNull(vm.state.value.selected)
-        assertFalse(vm.state.value.channelsOpen)
+        assertFalse(vm.state.value.playerOpen)
+        vm.expandPlayer()
+        assertFalse(vm.state.value.playerOpen)
         vm.openCategory("missing")
         assertFalse(vm.state.value.channelsOpen)
         // A channel opened from elsewhere plays with its category open behind it; the tab bar starts over.
@@ -236,8 +250,12 @@ class LiveViewModelTest {
         vm.fullscreen(false)
         assertFalse(vm.state.value.fullscreen)
         vm.fullscreen(true)
-        vm.category(vm.categoryOf("sintel"))
+        vm.minimizePlayer()
         assertFalse(vm.state.value.fullscreen)
+        vm.fullscreen(true)
+        vm.closePlayer()
+        assertFalse(vm.state.value.fullscreen)
+        vm.category(vm.categoryOf("sintel"))
         vm.select(vm.channel("sintel"))
         vm.fullscreen(true)
         vm.navigate(Destination.HOME)

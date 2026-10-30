@@ -280,13 +280,13 @@ private const val CONTROLS_MS = 5_000L
 
 /**
  * Live picture with its own controls, YouTube style: a touch shows or hides them, they fade out while the
- * channel plays. Top: [onMinimize] and the « DIRECT » badge; bottom: pause, sound, [onGuide] and fullscreen.
+ * channel plays. Top: [onMinimize], the « DIRECT » badge and [onClose]; bottom: pause, sound, [onGuide] and fullscreen.
  * Loading and errors show in the middle, with « Réessayer ».
  */
 @Composable
 fun LivePlayer(
     playback: Playback, onFullscreen: (Boolean) -> Unit, modifier: Modifier = Modifier,
-    onMinimize: (() -> Unit)? = null, onGuide: (() -> Unit)? = null
+    onMinimize: (() -> Unit)? = null, onGuide: (() -> Unit)? = null, onClose: (() -> Unit)? = null
 ) {
     var visible by remember(playback) { mutableStateOf(true) }
     LaunchedEffect(visible, playback.playing) {
@@ -305,6 +305,7 @@ fun LivePlayer(
                     if (onMinimize != null) OverlayButton(MiptvIcons.ChevronDown, "Réduire le lecteur", onMinimize, Modifier.testTag("minimize-player"))
                     Spacer(Modifier.weight(1f))
                     LiveBadge(Modifier.padding(end = 8.dp))
+                    if (onClose != null) OverlayButton(MiptvIcons.Close, "Fermer le lecteur", onClose, Modifier.testTag("close-player"))
                 }
                 Row(
                     Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).padding(4.dp),
