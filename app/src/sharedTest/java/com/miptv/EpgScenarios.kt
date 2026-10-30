@@ -205,6 +205,27 @@ object EpgScenarios {
         assertEquals("Film : Le Voyage", repository.nowAndNext(GuideFixtures.H21_00 + 900_000L).first()["xtream:1:101"]!!.now.title)
     }
 
+    /** Only guides old enough are reloaded, sources without guide are skipped, a failure stays on its source, and finished programmes go. */
+    suspend fun staleGuidesAreReloaded(repository: ChannelRepository, loader: GuideLoader, clock: TestClock) {
+        playlistGuideIsImportedAndJoined(repository, loader)
+        loader["http://list.example/bis.m3u"] = GuideFixtures.PLAYLIST_WITHOUT_GUIDE
+        repository.addSource("Bis", "http://list.example/bis.m3u", SourceKind.URL)
+        val hour = 3_600_000L
+        assertEquals(0, repository.refreshStaleGuides(GuideFixtures.NOW + hour - 1, hour))
+        assertEquals(1, loader.opened[GuideFixtures.GUIDE_URL])
+        assertEquals(1, repository.refreshStaleGuides(GuideFixtures.NOW + hour, hour))
+        assertEquals(2, loader.opened[GuideFixtures.GUIDE_URL])
+        assertEquals(1, loader.opened["http://list.example/bis.m3u"])
+
+        clock.now = GuideFixtures.NOON_NEXT
+        loader[GuideFixtures.GUIDE_URL] = "<html>maintenance</html>"
+        assertEquals(0, repository.refreshStaleGuides(clock.now, hour))
+        val france = repository.sources.first().first { it.name == "France" }
+        assertEquals(XmltvParser.UNEXPECTED, france.epgError)
+        assertEquals(GuideFixtures.NOW, france.epgRefreshedAt)
+        assertEquals(listOf("Nuit blanche"), repository.programmes(repository.channelNamed("TF1").id, GuideFixtures.DAY_START, GuideFixtures.NEXT_DAY + 86_400_000L).first().map { it.title })
+    }
+
     /** Programmes finished for more than twelve hours go; the running and coming ones stay. */
     suspend fun purgeDropsFinishedProgrammes(repository: ChannelRepository, loader: GuideLoader, clock: TestClock) {
         playlistGuideIsImportedAndJoined(repository, loader)

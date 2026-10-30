@@ -19,15 +19,15 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 
 ## Lot 1 — Guide chargé à l'ajout d'un favori Xtream
 
-- **ViewModel** : `toggleFavorite` d'une chaîne Xtream ajoutée aux favoris planifie `refreshEpg` de sa source, avec attente de 3 s regroupant les ajouts suivants  ; aucun message hors de Sources : le résultat (nombre de programmes ou `epgError`) s'affiche sur la fiche source.
+- **ViewModel** : `toggleFavorite` d'une chaîne Xtream ajoutée aux favoris planifie `refreshEpg` de sa source, avec attente de 3 s regroupant les ajouts suivants ; aucun message hors de Sources : le résultat (nombre de programmes ou `epgError`) s'affiche sur la fiche source.
 - **Tests** : `GuideViewModelTest` (un ajout, trois ajouts rapprochés → un seul import, retrait sans import, chaîne M3U sans import).
 
 ## Lot 2 — Actualisation quotidienne
 
 - **Dépendance** `androidx.work:work-runtime-ktx`.
-- **`GuideRefreshWorker`** (nouveau) : relit les sources, appelle `refreshEpg` pour celles qui ont un guide plus vieux que 20 h, puis `purgeProgrammes` ; résultat `retry` sur échec réseau, `success` sinon. Planifié par `MiptvApplication` (`enqueueUniquePeriodicWork`, `KEEP`).
-- **Au lancement** : même règle à 24 h, dans le ViewModel après la purge existante.
-- **Tests** : la règle d'ancienneté sur le dépôt mémoire (JVM) ; le travail avec `work-testing` (`TestListenableWorkerBuilder`) sur Room.
+- **`refreshStaleGuides(nowMs, maxAgeMs)`** (`GuideRefresh.kt`, nouveau) : recharge le guide des sources dont le guide date de `maxAgeMs` ou plus (ou n'a jamais été chargé), puis purge ; un échec reste sur sa source (`epgError`).
+- **`GuideRefreshWorker`** : appelle cette règle, toujours en `success` (les erreurs sont sur les fiches source). Planifié par `MiptvApplication` : travail périodique `guide-daily` (24 h, seuil 20 h) et travail unique `guide-launch` à chaque lancement (seuil 24 h), tous deux en `KEEP` et sur réseau non facturé.
+- **Tests** : scénario partagé `staleGuidesAreReloaded` sur les deux dépôts (seuil, source sans guide, échec conservant l'ancien guide, purge). Le travail lui-même, une ligne autour de la règle, est vérifié sur l'appareil (`dumpsys jobscheduler`).
 
 ## Lot 3 — Feuille guide honnête
 

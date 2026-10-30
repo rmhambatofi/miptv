@@ -289,6 +289,10 @@ object EpgWindow {
     /** Xtream `get_short_epg` answers are refreshed after this delay. */
     const val SHORT_EPG_TTL_MS = 30 * 60_000L
     const val SHORT_EPG_LIMIT = 12
+    /** The daily refresh reloads guides older than this; a little under a day, so a late run still reloads. */
+    const val REFRESH_AFTER_MS = 20 * 3_600_000L
+    /** At launch, guides older than this are reloaded (the daily work may have been held back by the system). */
+    const val STALE_AT_LAUNCH_MS = 24 * 3_600_000L
 }
 
 /** M3U import contract. [parse] on a string is kept for small inputs; [parseLines] streams. */
