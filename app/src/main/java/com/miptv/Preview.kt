@@ -221,7 +221,7 @@ fun describePlaybackError(error: PlaybackException): String = when (error.errorC
     else -> "Lecture indisponible. Vérifiez votre connexion."
 }
 
-private const val DEFAULT_USER_AGENT = "miptv/0.3 (Android; Media3)"
+private const val DEFAULT_USER_AGENT = "miptv/0.4 (Android; Media3)"
 
 /** Media3 view bound to the hoisted player; the controller's own fullscreen button toggles [onFullscreen]. */
 @OptIn(UnstableApi::class)
@@ -246,7 +246,7 @@ fun PlayerSurface(playback: Playback, fullscreen: Boolean, onFullscreen: (Boolea
 
 /** Inline preview inside the TV tab. */
 @Composable
-fun Preview(playback: Playback, favorite: Boolean, onFullscreen: (Boolean) -> Unit, onToggleFavorite: () -> Unit) {
+fun Preview(playback: Playback, favorite: Boolean, onFullscreen: (Boolean) -> Unit, nowNext: NowNext? = null, nowMs: Long = 0L, onToggleFavorite: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(playback.item.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -254,6 +254,7 @@ fun Preview(playback: Playback, favorite: Boolean, onFullscreen: (Boolean) -> Un
             TextButton(onClick = { onFullscreen(true) }, modifier = Modifier.testTag("enter-fullscreen")) { Text("Plein écran") }
         }
         PlayerSurface(playback, fullscreen = false, onFullscreen = onFullscreen, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+        if (nowNext != null) NowLine(nowNext, nowMs, Modifier.testTag("preview-now"))
         Text(playback.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("player-status"))
         if (playback.failed) Button(onClick = playback::retry, modifier = Modifier.testTag("retry")) { Text("Réessayer") }
     }
@@ -285,12 +286,18 @@ fun VodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClose: () -
 
 /** Landscape, system bars hidden by the activity; back or the close button returns to the tab. [onNext] plays the next episode. */
 @Composable
-fun FullscreenPlayer(playback: Playback, onExit: () -> Unit, onNext: (() -> Unit)? = null) {
+fun FullscreenPlayer(playback: Playback, onExit: () -> Unit, onNext: (() -> Unit)? = null, nowNext: NowNext? = null) {
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("fullscreen-player")) {
         PlayerSurface(playback, fullscreen = true, onFullscreen = { if (!it) onExit() }, modifier = Modifier.fillMaxSize())
         Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onExit, modifier = Modifier.testTag("exit-fullscreen")) { Icon(Icons.Default.Close, contentDescription = "Quitter le plein écran", tint = Color.White) }
-            Text(playback.item.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+            Column(Modifier.weight(1f)) {
+                Text(playback.item.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                if (nowNext != null) Text(
+                    "En ce moment · ${nowNext.now.title}" + (nowNext.next?.let { "   Ensuite · ${it.title}" } ?: ""),
+                    color = Color(0xFFD0D4E0), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.testTag("fullscreen-now")
+                )
+            }
         }
         if (playback.failed || (playback.ended && onNext != null)) {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 
 /**
  * Builds a database from the exported schema files (`app/schemas`), as a Sprint 2 install left it, then
- * migrates it step by step (v1 → v2 → v3). Each future version adds its `runMigrationsAndValidate` step here.
+ * migrates it step by step (v1 → v2 → v3 → v4). Each future version adds its `runMigrationsAndValidate` step here.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -58,6 +58,21 @@ class MigrationTest {
             close()
         }
 
+        // v4 adds the guide columns, seeds the channel guide key from tvgId and creates the empty programmes table.
+        helper.runMigrationsAndValidate(DB, 4, true, MIGRATION_3_4).apply {
+            query("SELECT epgUrl, epgRefreshedAt, epgError, programmeCount FROM sources").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue(cursor.isNull(0)); assertTrue(cursor.isNull(1)); assertTrue(cursor.isNull(2)); assertEquals(0, cursor.getInt(3))
+            }
+            query("SELECT epgKey FROM channels ORDER BY position").use { cursor ->
+                val keys = ArrayList<String?>()
+                while (cursor.moveToNext()) keys += if (cursor.isNull(0)) null else cursor.getString(0)
+                assertEquals(listOf("bbb", "sintel", null), keys)
+            }
+            query("SELECT COUNT(*) FROM programmes").use { cursor -> cursor.moveToFirst(); assertEquals(0, cursor.getInt(0)) }
+            close()
+        }
+
         // Room checks the identity hash: a schema file out of step with the entities fails here.
         val database = Room.databaseBuilder(ApplicationProvider.getApplicationContext(), MiptvDatabase::class.java, DB)
             .addMigrations(*MIGRATIONS).build()
@@ -82,6 +97,8 @@ class MigrationTest {
             assertTrue(repository.movieCategories.first().isEmpty())
             assertTrue(repository.progress.first().isEmpty())
             assertEquals(0, repository.countMovies(VodQuery()).first())
+            assertTrue(repository.nowAndNext(System.currentTimeMillis()).first().isEmpty())
+            assertFalse(source.hasGuide)
         } finally {
             database.close()
         }

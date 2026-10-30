@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -36,7 +37,7 @@ class HttpStatusException(val code: Int) : IOException("HTTP $code")
  * [PlaylistException] for a non-HTTP scheme or a broken redirect.
  */
 object Http {
-    const val USER_AGENT = "miptv/0.3 (Android)"
+    const val USER_AGENT = "miptv/0.4 (Android)"
     const val CONNECT_TIMEOUT_MS = 15_000
     const val READ_TIMEOUT_MS = 30_000
     const val MAX_REDIRECTS = 5
@@ -100,7 +101,11 @@ fun describeImportError(error: Throwable): String = when (error) {
  * In-memory implementation: sources and catalog live for the process only. Used by tests and as the
  * reference behaviour for the persistent implementation. Lists are filtered in memory and served as one page.
  */
-class MemoryChannelRepository(private val loader: PlaylistLoader, private val xtream: XtreamClient? = null) : ChannelRepository {
+class MemoryChannelRepository(
+    private val loader: PlaylistLoader,
+    private val xtream: XtreamClient? = null,
+    private val clock: () -> Long = { System.currentTimeMillis() }
+) : ChannelRepository {
     private val mutex = Mutex()
     private val playlists = LinkedHashMap<Long, ParsedPlaylist>()
     private val favorites = LinkedHashSet<String>()
@@ -118,6 +123,13 @@ class MemoryChannelRepository(private val loader: PlaylistLoader, private val xt
     private val detailedMovies = HashMap<String, Movie>()
     private val seriesInfos = HashMap<String, SeriesInfo>()
     private val progressFlow = MutableStateFlow<List<PlaybackProgress>>(emptyList())
+
+    // Programme guide: programmes per source, the guide key of channels whose key is not their tvg-id, and a version
+    // bumped on every change so the guide flows recompute.
+    private val guides = HashMap<Long, List<Programme>>()
+    private val guideKeys = HashMap<String, String>()
+    private val guideVersion = MutableStateFlow(0)
+    private val shortEpgFetched = HashMap<String, Long>()
     override val categories: Flow<List<Category>> = snapshot.map { it.categories }.distinctUntilChanged()
     override val favoriteIds: Flow<Set<String>> = snapshot.map { it.favorites }.distinctUntilChanged()
     override val sources: Flow<List<Source>> = sourcesFlow.asStateFlow()
@@ -140,6 +152,8 @@ class MemoryChannelRepository(private val loader: PlaylistLoader, private val xt
             nextId++
             sourcesFlow.update { it + result.source }
             publish()
+            if (result.source.hasGuide) importGuide(result.source.id)
+            return ImportResult.Success(sourcesFlow.value.first { it.id == result.source.id })
         }
         result
     }
@@ -173,6 +187,10 @@ class MemoryChannelRepository(private val loader: PlaylistLoader, private val xt
         }
         sourcesFlow.update { list -> list.map { if (it.id == id) updated else it } }
         publish()
+        if (result is ImportResult.Success && updated.hasGuide) {
+            importGuide(id)
+            return ImportResult.Success(sourcesFlow.value.first { it.id == id })
+        }
         result
     }
 
@@ -183,6 +201,8 @@ class MemoryChannelRepository(private val loader: PlaylistLoader, private val xt
         playlists.remove(id)
         vod.remove(id)
         accounts.remove(id)
+        guides.remove(id)
+        guideVersion.update { it + 1 }
         seriesInfos.keys.removeAll { XtreamIds.sourceOf(it) == id }
         detailedMovies.keys.removeAll { XtreamIds.sourceOf(it) == id }
         progressFlow.update { list -> list.filterNot { XtreamIds.sourceOf(it.itemId) == id } }
@@ -259,7 +279,7 @@ class MemoryChannelRepository(private val loader: PlaylistLoader, private val xt
     override val progress: Flow<List<PlaybackProgress>> = progressFlow.asStateFlow()
     override suspend fun progress(itemId: String): PlaybackProgress? = progressFlow.value.firstOrNull { it.itemId == itemId }
     override suspend fun saveProgress(itemId: String, positionMs: Long, durationMs: Long) {
-        val entry = PlaybackProgress(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), System.currentTimeMillis())
+        val entry = PlaybackProgress(itemId, positionMs.coerceAtLeast(0), durationMs.coerceAtLeast(0), clock())
         progressFlow.update { list -> listOf(entry) + list.filterNot { it.itemId == itemId } }
     }
     override suspend fun clearProgress(itemId: String) { progressFlow.update { list -> list.filterNot { it.itemId == itemId } } }
@@ -269,10 +289,156 @@ class MemoryChannelRepository(private val loader: PlaylistLoader, private val xt
         if (parsed.channels.isEmpty()) ImportResult.Failure("Aucune chaîne trouvée dans cette playlist.")
         else {
             playlists[source.id] = parsed
-            ImportResult.Success(source.copy(lastRefreshed = System.currentTimeMillis(), channelCount = parsed.channels.size, lastError = null))
+            // The address the user set wins over the header's.
+            ImportResult.Success(source.copy(lastRefreshed = clock(), channelCount = parsed.channels.size, lastError = null, epgUrl = source.epgUrl ?: parsed.epgUrl))
         }
     } catch (error: Exception) {
         ImportResult.Failure(describeImportError(error))
+    }
+
+    // --- Programme guide ---
+
+    override suspend fun setEpgUrl(sourceId: Long, url: String?): ImportResult = mutex.withLock {
+        val source = sourcesFlow.value.firstOrNull { it.id == sourceId } ?: return ImportResult.Failure("Source introuvable.")
+        if (source.kind == SourceKind.XTREAM) return ImportResult.Failure("Le guide d'un fournisseur Xtream vient de son compte.")
+        val clean = url?.trim()?.ifEmpty { null }
+        if (clean != null && !clean.startsWith("http://", ignoreCase = true) && !clean.startsWith("https://", ignoreCase = true)) {
+            return ImportResult.Failure("Seules les adresses http:// et https:// sont acceptées.")
+        }
+        if (clean == null) {
+            guides.remove(sourceId)
+            updateSource(sourceId) { it.copy(epgUrl = null, epgRefreshedAt = null, epgError = null, programmeCount = 0) }
+            guideVersion.update { it + 1 }
+            return ImportResult.Success(sourcesFlow.value.first { it.id == sourceId })
+        }
+        updateSource(sourceId) { it.copy(epgUrl = clean) }
+        importGuide(sourceId)
+    }
+
+    override suspend fun refreshEpg(sourceId: Long): ImportResult = mutex.withLock { importGuide(sourceId) }
+
+    private fun updateSource(id: Long, change: (Source) -> Source) = sourcesFlow.update { list -> list.map { if (it.id == id) change(it) else it } }
+
+    /** Guide key of a channel: a matched guide channel, else its tvg-id. */
+    private fun keyOf(channel: Channel): String? = guideKeys[channel.id] ?: channel.tvgId
+
+    /** Same contract as the Room implementation: XMLTV of the playlist, or `xmltv.php` kept to the favourites. Callers hold [mutex]. */
+    private suspend fun importGuide(sourceId: Long): ImportResult {
+        val source = sourcesFlow.value.firstOrNull { it.id == sourceId } ?: return ImportResult.Failure("Source introuvable.")
+        val now = clock()
+        try {
+            val channels = playlists[sourceId]?.channels.orEmpty()
+            val location: String
+            var filter: ((String) -> Boolean)? = null
+            if (source.kind == SourceKind.XTREAM) {
+                val account = accounts[sourceId] ?: throw EpgException(CREDENTIALS_TO_REENTER)
+                val keys = channels.filter { it.id in favorites }.mapNotNullTo(HashSet()) { keyOf(it) }
+                if (keys.isEmpty()) {
+                    guides.remove(sourceId)
+                    updateSource(sourceId) { it.copy(epgRefreshedAt = now, epgError = null, programmeCount = 0) }
+                    guideVersion.update { it + 1 }
+                    shortEpgFetched.clear()
+                    return ImportResult.Success(sourcesFlow.value.first { it.id == sourceId })
+                }
+                location = account.xmltvUrl()
+                filter = { it in keys }
+            } else {
+                location = source.epgUrl ?: return ImportResult.Failure("Aucune adresse de guide pour cette source.")
+            }
+            val programmes = ArrayList<Programme>()
+            val parser = XmltvParser(sourceId, fromMs = now - EpgWindow.BEFORE_MS, toMs = now + EpgWindow.AFTER_MS, channelFilter = filter)
+            val result = loader.open(location, SourceKind.URL).use { input -> parser.parse(input) { programmes += it } }
+            var kept: List<Programme> = programmes
+            if (source.kind != SourceKind.XTREAM) {
+                val guideIds = result.channels.mapTo(HashSet()) { it.id }
+                val byName = guideNameIndex(result.channels)
+                for (channel in channels) {
+                    val key = guideKey(channel.tvgId, channel.name, guideIds, byName)
+                    if (key != null && key != channel.tvgId) guideKeys[channel.id] = key else guideKeys.remove(channel.id)
+                }
+                // Same as Room: programmes no channel of the playlist can show are dropped.
+                val keys = channels.mapNotNullTo(HashSet()) { keyOf(it) }
+                kept = programmes.filter { it.channelKey in keys }
+            }
+            guides[sourceId] = kept
+            purge(now)
+            updateSource(sourceId) { it.copy(epgRefreshedAt = now, epgError = null, programmeCount = guides[sourceId]?.size ?: 0) }
+            guideVersion.update { it + 1 }
+            shortEpgFetched.clear()
+            return ImportResult.Success(sourcesFlow.value.first { it.id == sourceId })
+        } catch (error: Exception) {
+            val message = describeEpgError(error)
+            updateSource(sourceId) { it.copy(epgError = message) }
+            return ImportResult.Failure(message)
+        }
+    }
+
+    private fun purge(now: Long) {
+        val limit = now - EpgWindow.PURGE_AFTER_MS
+        for ((id, list) in guides.entries) guides[id] = list.filter { it.stopMs >= limit }
+    }
+
+    /** Programmes of a source by guide key, each list in start order. */
+    private fun byKey(sourceId: Long): Map<String, List<Programme>> = guides[sourceId].orEmpty().groupBy { it.channelKey }.mapValues { (_, list) -> list.sortedBy { it.startMs } }
+
+    override fun nowAndNext(nowMs: Long): Flow<Map<String, NowNext>> = combine(snapshot, guideVersion) { s, _ ->
+        val indices = HashMap<Long, Map<String, List<Programme>>>()
+        val out = HashMap<String, NowNext>()
+        for (channel in s.channels) {
+            val key = keyOf(channel) ?: continue
+            val list = indices.getOrPut(channel.sourceId) { byKey(channel.sourceId) }[key] ?: continue
+            val now = list.firstOrNull { it.isLive(nowMs) } ?: continue
+            out[channel.id] = NowNext(now, list.firstOrNull { it.startMs >= now.stopMs })
+        }
+        out
+    }
+
+    override fun programmes(channelId: String, fromMs: Long, toMs: Long): Flow<List<Programme>> = combine(snapshot, guideVersion) { s, _ ->
+        val channel = s.channels.firstOrNull { it.id == channelId } ?: return@combine emptyList()
+        val key = keyOf(channel) ?: return@combine emptyList()
+        byKey(channel.sourceId)[key].orEmpty().filter { it.stopMs > fromMs && it.startMs < toMs }
+    }
+
+    private fun hits(s: Snapshot, text: String, nowMs: Long): List<ProgrammeHit> {
+        if (text.isBlank()) return emptyList()
+        val needle = searchKey(text)
+        val out = ArrayList<ProgrammeHit>()
+        val indices = HashMap<Long, Map<String, List<Programme>>>()
+        for (channel in s.channels) {
+            val key = keyOf(channel) ?: continue
+            for (programme in indices.getOrPut(channel.sourceId) { byKey(channel.sourceId) }[key].orEmpty()) {
+                if (programme.stopMs > nowMs && searchKey(programme.title).contains(needle)) out += ProgrammeHit(programme, channel)
+            }
+        }
+        return out.sortedWith(compareBy({ it.programme.startMs }, { it.channel.id }))
+    }
+
+    override fun searchProgrammes(text: String, nowMs: Long, limit: Int): Flow<List<ProgrammeHit>> = combine(snapshot, guideVersion) { s, _ -> hits(s, text, nowMs).take(limit) }
+
+    override fun countProgrammes(text: String, nowMs: Long): Flow<Int> = combine(snapshot, guideVersion) { s, _ -> hits(s, text, nowMs).size }
+
+    override suspend fun ensureShortEpg(channelId: String): Boolean = mutex.withLock {
+        val channel = snapshot.value.channels.firstOrNull { it.id == channelId } ?: return false
+        val ref = XtreamStreamRef.parse(channel.streamUrl) ?: return false
+        val key = keyOf(channel) ?: "stream:${ref.streamId}".also { guideKeys[channelId] = it }
+        val now = clock()
+        val fetchedAt = shortEpgFetched[channelId]
+        val running = guides[ref.sourceId].orEmpty().any { it.channelKey == key && it.stopMs > now }
+        if (running && (fetchedAt == null || now - fetchedAt < EpgWindow.SHORT_EPG_TTL_MS)) return false
+        val account = accounts[ref.sourceId] ?: return false
+        val client = xtream ?: return false
+        val fetched = try { client.shortEpg(account, ref.sourceId, ref.streamId, key, EpgWindow.SHORT_EPG_LIMIT) } catch (_: Exception) { return false }
+        shortEpgFetched[channelId] = now
+        if (fetched.isEmpty()) return false
+        val starts = fetched.mapTo(HashSet()) { it.startMs }
+        guides[ref.sourceId] = guides[ref.sourceId].orEmpty().filterNot { it.channelKey == key && it.startMs in starts } + fetched
+        guideVersion.update { it + 1 }
+        true
+    }
+
+    override suspend fun purgeProgrammes() = mutex.withLock {
+        purge(clock())
+        guideVersion.update { it + 1 }
     }
 
     private suspend fun importXtream(source: Source, account: XtreamAccount): ImportResult {

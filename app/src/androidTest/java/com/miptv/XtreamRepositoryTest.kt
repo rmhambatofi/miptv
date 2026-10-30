@@ -32,7 +32,7 @@ class XtreamRepositoryTest {
 
     @Before fun open() {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), MiptvDatabase::class.java).build()
-        repository = RoomChannelRepository(database, loader, xtream, cipher)
+        repository = RoomChannelRepository(database, loader, xtream, cipher, TickingClock())
     }
 
     @After fun close() = database.close()

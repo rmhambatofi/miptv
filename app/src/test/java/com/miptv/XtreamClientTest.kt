@@ -75,6 +75,7 @@ class XtreamClientTest {
             "get_series_categories" -> XtreamFixtures.EMPTY_OBJECT_LIST
             "get_series" -> XtreamFixtures.SERIES_LIST
             "get_series_info" -> if (params["series_id"] == "77") XtreamFixtures.SERIES_INFO else XtreamFixtures.SERIES_INFO_ARRAYS
+            "get_short_epg" -> if (params["stream_id"] == "101") XtreamFixtures.SHORT_EPG else XtreamFixtures.SHORT_EPG_EMPTY
             else -> return respond(output, 404, "")
         }
         respond(output, 200, body)
@@ -134,6 +135,19 @@ class XtreamClientTest {
         val ville = client.seriesDetails(account(), series[1])
         assertEquals(listOf(3, 4), ville.seasons.map { it.number })
         assertTrue(requests.all { it["username"] == "u-test" && it["password"] == "p-test" })
+    }
+
+    @Test fun shortEpgAsksForOneStreamWithALimit() = runBlocking {
+        val programmes = client.shortEpg(account(), sourceId = 5, streamId = 101, channelKey = "tf1.fr", limit = 4)
+        assertEquals(4, programmes.size)
+        assertEquals("Journal de 20h", programmes[0].title)
+        assertEquals("tf1.fr", programmes[0].channelKey)
+        assertEquals(5L, programmes[0].sourceId)
+        val request = requests.single()
+        assertEquals("get_short_epg", request["action"])
+        assertEquals("101", request["stream_id"])
+        assertEquals("4", request["limit"])
+        assertTrue(client.shortEpg(account(), 5, 102, "f2.fr").isEmpty())
     }
 
     @Test fun redirectsAreFollowedWithTheQueryKept() = runBlocking {

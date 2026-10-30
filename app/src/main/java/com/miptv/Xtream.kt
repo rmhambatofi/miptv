@@ -6,6 +6,7 @@ import java.net.MalformedURLException
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
 import java.net.UnknownHostException
+import java.time.ZoneId
 import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,6 +87,9 @@ fun XtreamAccount.apiUrl(action: String? = null, vararg params: Pair<String, Str
     for ((key, value) in params) url.append('&').append(key).append('=').append(encodeQuery(value))
     return url.toString()
 }
+
+/** `xmltv.php` address: the provider's whole guide, usually several tens of megabytes; read in a stream, by channel subset. */
+fun XtreamAccount.xmltvUrl(): String = "$server/xmltv.php?username=${encodeQuery(username)}&password=${encodeQuery(password)}"
 
 private fun encodeQuery(value: String): String = URLEncoder.encode(value, "UTF-8")
 private fun encodePathSegment(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
@@ -190,6 +194,52 @@ class XtreamParser(private val sourceId: Long) {
             )
         }
         out
+    }
+
+    /**
+     * `get_short_epg` (or `get_simple_data_table`): the programmes of one live stream, keyed by [channelKey]. Titles and
+     * descriptions come base64-encoded; `start_timestamp`/`stop_timestamp` are preferred to `start`/`end`, which are
+     * read in [zone] when the timestamps are missing. Listings without usable times are dropped; the result is sorted.
+     */
+    fun shortEpg(reader: Reader, channelKey: String, zone: ZoneId = ZoneId.systemDefault()): List<Programme> = JsonStreamReader(reader).use { json ->
+        val out = ArrayList<Programme>()
+        fun listing() {
+            var title: String? = null
+            var description: String? = null
+            var start: Long? = null
+            var stop: Long? = null
+            var startText: String? = null
+            var endText: String? = null
+            json.forEachField { f ->
+                when (f) {
+                    "title" -> title = json.nextStringOrNull()
+                    "description" -> description = json.nextStringOrNull()
+                    "start_timestamp" -> start = json.nextLongOrNull()
+                    "stop_timestamp" -> stop = json.nextLongOrNull()
+                    "start" -> startText = json.nextStringOrNull()
+                    "end" -> endText = json.nextStringOrNull()
+                    else -> json.skipValue()
+                }
+            }
+            val startMs = start?.takeIf { it > 0 }?.times(1000) ?: XmltvParser.parseLocalDateTime(startText, zone) ?: return
+            val stopMs = stop?.takeIf { it > 0 }?.times(1000) ?: XmltvParser.parseLocalDateTime(endText, zone) ?: return
+            if (stopMs <= startMs) return
+            out += Programme(
+                channelKey = channelKey,
+                startMs = startMs,
+                stopMs = stopMs,
+                title = XmltvParser.decodeBase64Text(title).ifEmpty { XmltvParser.UNTITLED },
+                description = XmltvParser.decodeBase64Text(description).ifEmpty { null },
+                sourceId = sourceId
+            )
+        }
+        when (json.peek()) {
+            JsonStreamReader.Token.BEGIN_OBJECT -> json.forEachField { f -> if (f == "epg_listings") json.forEachElement { listing() } else json.skipValue() }
+            JsonStreamReader.Token.BEGIN_ARRAY -> json.forEachElement { listing() }
+            else -> throw XtreamException(UNEXPECTED)
+        }
+        out.sortBy { it.startMs }
+        out.distinctBy { it.startMs }
     }
 
     /** `get_vod_streams`. */
@@ -569,6 +619,9 @@ class HttpXtreamClient : XtreamClient {
 
     override suspend fun seriesDetails(account: XtreamAccount, series: Series): SeriesInfo =
         fetch(account.apiUrl("get_series_info", "series_id" to series.seriesId.toString())) { XtreamParser(series.sourceId).seriesDetails(it, series) }
+
+    override suspend fun shortEpg(account: XtreamAccount, sourceId: Long, streamId: Long, channelKey: String, limit: Int): List<Programme> =
+        fetch(account.apiUrl("get_short_epg", "stream_id" to streamId.toString(), "limit" to limit.toString())) { XtreamParser(sourceId).shortEpg(it, channelKey) }
 
     private suspend fun <T> fetch(url: String, parse: (Reader) -> T): T = withContext(Dispatchers.IO) {
         Http.open(url).bufferedReader(Charsets.UTF_8).use(parse)

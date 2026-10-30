@@ -34,7 +34,9 @@ class SourceActions(
     val checkXtream: (server: String, username: String, password: String) -> Unit,
     val clearCheck: () -> Unit,
     val refresh: (Long) -> Unit,
-    val remove: (Long) -> Unit
+    val remove: (Long) -> Unit,
+    /** Programme guide of the sources (lot 3 of Sprint 4). */
+    val guide: GuideActions
 )
 
 /**
@@ -57,7 +59,7 @@ fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
     }
     item { Text("Sources configurées · ${state.sources.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     if (state.sources.isEmpty()) item { Text("Aucune source pour le moment.", modifier = Modifier.testTag("no-sources")) }
-    items(state.sources, key = { "source-${it.id}" }) { source -> SourceCard(source, state.importStatus.running, { actions.refresh(source.id) }, { actions.remove(source.id) }) }
+    items(state.sources, key = { "source-${it.id}" }) { source -> SourceCard(source, state.importStatus.running, actions.guide, { actions.refresh(source.id) }, { actions.remove(source.id) }) }
 }
 
 private enum class SourceForm(val label: String) { M3U("Playlist M3U"), XTREAM("Fournisseur Xtream") }
@@ -166,7 +168,7 @@ fun describeAccount(info: XtreamAccountInfo): String {
 }
 
 @Composable
-private fun SourceCard(source: Source, busy: Boolean, refresh: () -> Unit, remove: () -> Unit) {
+private fun SourceCard(source: Source, busy: Boolean, guide: GuideActions, refresh: () -> Unit, remove: () -> Unit) {
     Card(Modifier.fillMaxWidth().testTag("source-${source.id}")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(source.name, style = MaterialTheme.typography.titleMedium)
@@ -192,6 +194,7 @@ private fun SourceCard(source: Source, busy: Boolean, refresh: () -> Unit, remov
                 style = MaterialTheme.typography.bodySmall
             )
             source.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            SourceGuide(source, busy, guide)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = refresh, enabled = !busy, modifier = Modifier.testTag("refresh-${source.id}")) {
                     Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Actualiser")

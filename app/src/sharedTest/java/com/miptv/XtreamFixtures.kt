@@ -71,6 +71,17 @@ object XtreamFixtures {
     /** Episodes as an array of arrays, no season list, season taken from the episode. */
     const val SERIES_INFO_ARRAYS = """{"seasons":[],"info":{"name":"La ville bleue"},"episodes":[[{"id":"9101","episode_num":1,"title":"Un","season":3,"container_extension":"mkv"},{"id":"9102","episode_num":2,"title":"Deux","season":3}],[{"id":"9103","episode_num":1,"title":"Trois","season":4}]]}"""
 
+    /** `get_short_epg`: base64 titles and descriptions, timestamps as strings, one listing without timestamps, one without times. */
+    const val SHORT_EPG = """{"epg_listings":[
+      {"id":"1","epg_id":"5","title":"Sm91cm5hbCBkZSAyMGg=","lang":"fr","start":"2026-10-29 20:00:00","end":"2026-10-29 20:35:00","description":"TGUgam91cm5hbCwgbGEgbcOpdMOpbyAmIGxlcyBzcG9ydHMu","channel_id":"tf1.fr","start_timestamp":"1793300400","stop_timestamp":"1793302500","now_playing":1,"has_archive":0},
+      {"id":"2","epg_id":"5","title":"TcOpdMOpbw==","lang":"","start":"2026-10-29 20:35:00","end":"2026-10-29 20:40:00","description":"","channel_id":"tf1.fr","start_timestamp":"1793302500","stop_timestamp":"1793302800","now_playing":0,"has_archive":0},
+      {"id":"3","title":"RmlsbSA6IExlIFZveWFnZQ==","start":"2026-10-29 20:40:00","end":"2026-10-29 22:40:00","description":"RGV1eCBhbWlzIHRyYXZlcnNlbnQgdW4gcGF5cy4=","channel_id":"tf1.fr"},
+      {"id":"4","title":"U2FucyBob3JhaXJlcw=="},
+      {"id":"5","title":"Nuit blanche","start_timestamp":"1793310000","stop_timestamp":"1793313600"}
+    ]}"""
+
+    const val SHORT_EPG_EMPTY = """{"epg_listings":[]}"""
+
     const val HTML_LOGIN_PAGE = "<!DOCTYPE html><html><head><title>Login</title></head><body>Forbidden</body></html>"
 
     /** [count] films of modest size, like a real VOD catalogue of a large provider. */
