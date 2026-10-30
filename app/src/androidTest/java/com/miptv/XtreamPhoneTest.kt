@@ -88,9 +88,16 @@ class XtreamPhoneTest {
         scrollTo("close-player")
         compose.onNodeWithTag("close-player").performClick()
         compose.onNodeWithTag("vod-player").assertDoesNotExist()
+        scrollTo("close-sheet")
         compose.onNodeWithTag("close-sheet").performClick()
-        scrollTo("movie-category-strip")
-        compose.onNodeWithTag("movie-category-strip").assertIsDisplayed()
+        compose.onNodeWithTag("movie-category-pill").assertIsDisplayed()
+        // The pill opens the categories over the screen; picking one closes them.
+        compose.onNodeWithTag("movie-category-pill").performClick()
+        compose.onNodeWithTag("movie-category-favorites").performClick()
+        compose.onNodeWithTag("movie-category-menu").assertDoesNotExist()
+        compose.waitUntil(5_000) { model.state.value.movieCategoryId == Category.FAVORITES.id && model.state.value.visibleMovieCount == 0 }
+        scrollTo("empty-movies")
+        compose.onNodeWithTag("empty-movies").assertIsDisplayed()
     }
 
     @Test fun seriesSheetSwitchesSeasonsPlaysAndOffersTheNextEpisode() {
@@ -127,6 +134,10 @@ class XtreamPhoneTest {
         compose.onNodeWithTag("resume-xtream:1:movie:5001").performClick()
         compose.waitUntil(5_000) { model.state.value.vod?.resumeMs == 2_520_000L }
         compose.onNodeWithTag("sheet-title").assertTextContains("Le Voyage (2019)")
+        // The player takes the place of the picture; closed, the sheet offers to resume again.
+        compose.onNodeWithTag("vod-player").assertExists()
+        scrollTo("close-player")
+        compose.onNodeWithTag("close-player").performClick()
         scrollTo("resume-movie")
         compose.onNodeWithTag("resume-movie").assertTextContains("Reprendre à 42 min")
     }

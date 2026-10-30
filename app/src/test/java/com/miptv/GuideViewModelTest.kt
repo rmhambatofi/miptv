@@ -208,7 +208,7 @@ class GuideViewModelTest {
         assertEquals("sam. 31 oct.", dayLabel(days[2], GuideFixtures.NOW, paris))
         assertEquals("dim. 1 nov.", dayLabel(days[3], GuideFixtures.NOW, paris))
         val nowNext = NowNext(Programme("tf1.fr", GuideFixtures.H19_30, GuideFixtures.H20_35, "Journal"), Programme("tf1.fr", GuideFixtures.H20_35, GuideFixtures.H20_40, "Météo"))
-        assertEquals("Ensuite · 20:35 Météo", nextLabel(nowNext, paris))
+        assertEquals("À suivre 20:35 · Météo", nextLabel(nowNext, paris))
         assertNull(nextLabel(nowNext.copy(next = null), paris))
         assertNotNull(nowNext.now)
     }

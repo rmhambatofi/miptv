@@ -44,9 +44,10 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
 
     /** Lazy items only exist once scrolled into composition. */
     private fun scrollTo(tag: String) = compose.onNodeWithTag("content").performScrollToNode(hasTestTag(tag))
-    private fun chip(tag: String) {
-        scrollTo("category-strip")
-        compose.onNodeWithTag("category-strip").performScrollToNode(hasTestTag(tag))
+    /** Back to the list of categories if a category is open, then into the category [tag]. */
+    private fun openCategory(tag: String) {
+        if (compose.onAllNodesWithTag("close-category").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithTag("close-category").performClick()
+        scrollTo(tag)
         compose.onNodeWithTag(tag).performClick()
     }
 
@@ -58,8 +59,7 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         val model = launch()
         compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
         compose.onNodeWithTag("nav-TV").performClick()
-        scrollTo("category-strip")
-        compose.onNodeWithTag("category-strip").performScrollToNode(hasTestTag(model.categoryTag("bbb")))
+        scrollTo(model.categoryTag("bbb"))
         compose.onNodeWithTag(model.categoryTag("bbb")).assertIsDisplayed()
         // Without an Xtream source, Films and Séries lead to the provider form.
         compose.onNodeWithTag("nav-MOVIES").performClick()
@@ -77,7 +77,7 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
     @Test fun categoryFilterAndSearchFiltering() {
         val model = launch()
         compose.onNodeWithTag("nav-TV").performClick()
-        chip(model.categoryTag("sintel"))
+        openCategory(model.categoryTag("sintel"))
         scrollTo(model.channelTag("sintel"))
         compose.onNodeWithTag(model.channelTag("sintel")).assertIsDisplayed()
         compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()
@@ -127,6 +127,8 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.waitUntil(5_000) { model.state.value.hasSources && !model.state.value.importStatus.running }
         compose.onNodeWithTag("nav-TV").performClick()
         compose.onNodeWithTag("no-source").assertDoesNotExist()
+        openCategory("category-all")
+        compose.onNodeWithTag("toggle-filter").performClick()
         scrollTo("filter-input")
         compose.onNodeWithTag("filter-input").performTextInput("sin")
         hideKeyboard()
@@ -138,15 +140,18 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
     @Test fun selectingAChannelShowsPreviewAndFullscreenToggles() {
         val model = launch()
         compose.onNodeWithTag("nav-TV").performClick()
+        openCategory("category-all")
         scrollTo(model.channelTag("bbb"))
         compose.onNodeWithTag(model.channelTag("bbb")).performClick()
-        scrollTo("player-status")
+        // The player sits above the list: the channels of the category scroll under it.
         compose.onNodeWithTag("player-status").assertExists()
-        scrollTo("enter-fullscreen")
         compose.onNodeWithTag("enter-fullscreen").performClick()
         compose.onNodeWithTag("fullscreen-player").assertIsDisplayed()
         compose.onNodeWithTag("exit-fullscreen").performClick()
         compose.onNodeWithTag("fullscreen-player").assertDoesNotExist()
+        compose.onNodeWithTag("minimize-player").performClick()
+        compose.onNodeWithTag("player-status").assertDoesNotExist()
+        compose.onNodeWithTag("close-category").assertIsDisplayed()
         compose.onNodeWithTag("nav-HOME").performClick()
         compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
     }
@@ -154,15 +159,15 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
     @Test fun favoriteStarFeedsTheFavoritesCategory() {
         val model = launch()
         compose.onNodeWithTag("nav-TV").performClick()
-        chip("category-favorites")
+        openCategory("category-favorites")
         scrollTo("empty-category")
         compose.onNodeWithTag("empty-category").assertIsDisplayed()
-        chip("category-all")
+        openCategory("category-all")
         val star = "favorite-" + channel("sintel").id
         scrollTo(star)
         compose.onNodeWithTag(star).performClick()
         compose.waitUntil(5_000) { model.state.value.favoriteIds.size == 1 }
-        chip("category-favorites")
+        openCategory("category-favorites")
         scrollTo(model.channelTag("sintel"))
         compose.onNodeWithTag(model.channelTag("sintel")).assertIsDisplayed()
         compose.onNodeWithTag(model.channelTag("bbb")).assertDoesNotExist()

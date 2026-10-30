@@ -7,19 +7,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,7 +34,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -56,8 +64,10 @@ class MainActivity : ComponentActivity() {
                 initializer { LiveViewModel(app.repository, createSavedStateHandle()) }
             })
             val state by model.state.collectAsStateWithLifecycle()
-            FullscreenEffect(state.fullscreen)
-            MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
+            // The opening screen plays on a cold start only, not after a rotation or a process restore.
+            var splash by rememberSaveable { mutableStateOf(savedInstanceState == null) }
+            FullscreenEffect(state.fullscreen && !splash)
+            MiptvTheme { if (splash) Splash { splash = false } else PhoneApp(state, model.actions(), model.feeds()) }
         }
     }
 }
@@ -85,10 +95,11 @@ fun FullscreenEffect(fullscreen: Boolean) {
 @Composable
 fun MiptvTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(
-        background = Color(0xFF0B0D12), surface = Color(0xFF181C26),
-        primary = Color(0xFFFF647C), onPrimary = Color(0xFF330010),
-        secondary = Color(0xFFA8B8FF), onBackground = Color(0xFFF5F5FA),
-        onSurface = Color(0xFFF5F5FA), onSurfaceVariant = Color(0xFFBCC1D0)
+        background = Palette.Ink, surface = Palette.Panel, surfaceVariant = Palette.Raised,
+        surfaceContainer = Palette.Panel, surfaceContainerHigh = Palette.Raised, surfaceContainerHighest = Palette.Raised,
+        primary = Palette.Accent, onPrimary = Color(0xFF330010), primaryContainer = Palette.AccentSoft, onPrimaryContainer = Palette.Text,
+        secondary = Palette.Link, secondaryContainer = Palette.AccentSoft, onSecondaryContainer = Palette.Text,
+        onBackground = Palette.Text, onSurface = Palette.Text, onSurfaceVariant = Palette.Muted, outline = Palette.Dim, outlineVariant = Palette.Raised
     ), content = content)
 }
 
@@ -113,7 +124,11 @@ class PhoneActions(
     /** Turns a stored reference into the URL the player opens; null when the credentials are gone. */
     val resolveStream: suspend (String) -> String?,
     val saveProgress: (String, Long, Long) -> Unit,
-    val nextEpisode: () -> Episode?
+    val nextEpisode: () -> Episode?,
+    /** TV tab levels: a category's channels, back to the categories, back from the player. */
+    val openCategory: (String) -> Unit,
+    val closeCategory: () -> Unit,
+    val closePlayer: () -> Unit
 )
 
 fun LiveViewModel.guideActions() = GuideActions(
@@ -131,7 +146,10 @@ fun LiveViewModel.actions() = PhoneActions(
     guide = guideActions(),
     resolveStream = ::resolveStream,
     saveProgress = ::saveProgress,
-    nextEpisode = ::nextEpisode
+    nextEpisode = ::nextEpisode,
+    openCategory = ::openCategory,
+    closeCategory = ::closeCategory,
+    closePlayer = ::closePlayer
 )
 
 /** Paged lists, collected by the screens that show them. */
@@ -169,152 +187,222 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
     }
     if (state.fullscreen && playback != null) {
         BackHandler { actions.fullscreen(false) }
-        FullscreenPlayer(playback, onExit = { actions.fullscreen(false) }, onNext = if (nextEpisode != null) actions.vod.playNext else null, nowNext = state.selectedNowNext)
+        // Previous and next channel follow the list the channel was picked from.
+        val loaded = pages.tv.itemSnapshotList.items
+        val index = state.selected?.let { selected -> loaded.indexOfFirst { it.id == selected.id } } ?: -1
+        val previous = loaded.getOrNull(index - 1).takeIf { index >= 0 }
+        val next = loaded.getOrNull(index + 1).takeIf { index >= 0 }
+        FullscreenPlayer(
+            playback, onExit = { actions.fullscreen(false) }, onNext = if (nextEpisode != null) actions.vod.playNext else null, nowNext = state.selectedNowNext, nowMs = state.nowMs,
+            onPreviousChannel = previous?.let { { actions.select(it) } }, onNextChannel = next?.let { { actions.select(it) } },
+            onGuide = state.selected?.let { channel -> { actions.fullscreen(false); actions.guide.open(channel) } }
+        )
         return
     }
     val guideOpen = !state.sourcesOpen && state.guideSheet != null
     val sheetOpen = !state.sourcesOpen && !guideOpen && (state.movieSheet != null || state.seriesSheet != null)
+    val inTv = !state.sourcesOpen && !guideOpen && state.destination == Destination.TV
     BackHandler(state.sourcesOpen) { actions.openSources(false) }
     BackHandler(guideOpen) { actions.guide.close() }
     BackHandler(sheetOpen) { actions.vod.closeSheet() }
-    BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && state.destination != Destination.HOME) { actions.navigate(Destination.HOME) }
-    Scaffold(bottomBar = {
-        NavigationBar {
-            Destination.entries.forEach { destination ->
-                val icon = when (destination) {
-                    Destination.HOME -> Icons.Default.Home
-                    Destination.TV -> Icons.Default.PlayArrow
-                    Destination.MOVIES -> Icons.Default.Star
-                    Destination.SERIES -> Icons.AutoMirrored.Filled.List
-                    Destination.SEARCH -> Icons.Default.Search
-                }
-                NavigationBarItem(
-                    selected = state.destination == destination && !state.sourcesOpen,
-                    onClick = { actions.navigate(destination) },
-                    icon = { Icon(icon, contentDescription = null) },
-                    label = { Text(destination.label, maxLines = 1) },
-                    modifier = Modifier.testTag("nav-${destination.name}")
-                )
-            }
-        }
-    }) { padding ->
+    BackHandler(inTv && state.selected != null) { actions.closePlayer() }
+    BackHandler(inTv && state.selected == null && state.channelsOpen) { actions.closeCategory() }
+    BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && !(inTv && (state.selected != null || state.channelsOpen)) && state.destination != Destination.HOME) {
+        actions.navigate(Destination.HOME)
+    }
+    Scaffold(containerColor = Palette.Ink, bottomBar = { MiptvNavBar(if (state.sourcesOpen) null else state.destination, actions.navigate) }) { padding ->
         val guide = state.guideSheet
-        val scrollState = key(state.destination, state.sourcesOpen, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
+        val scrollState = key(state.destination, state.sourcesOpen, state.channelsOpen, state.selected != null, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
         // Once the day's programmes arrive, show the one on air (or the searched one) first.
         LaunchedEffect(guideOpen, guide?.channel?.id, guide?.dayStartMs, guide?.loading) {
             if (!guideOpen || guide == null || guide.loading) return@LaunchedEffect
             val target = guide.focusMs ?: guide.programmes.firstOrNull { it.isLive(state.nowMs) }?.startMs ?: return@LaunchedEffect
             val index = guide.programmes.indexOfFirst { it.startMs == target }
-            if (index > 0) scrollState.scrollToItem(1 + GUIDE_HEADER_ITEMS + index)
+            if (index > 0) scrollState.scrollToItem(GUIDE_HEADER_ITEMS + index)
         }
-        LazyColumn(
-            state = scrollState,
-            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding().testTag("content"),
-            contentPadding = PaddingValues(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("miptv", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.testTag("open-sources")) {
-                        Icon(Icons.Default.Settings, contentDescription = "Sources", tint = if (state.sourcesOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            when {
+                state.sourcesOpen -> {
+                    BackHeader("Sources", { actions.openSources(false) }, "close-sources")
+                    ContentList(scrollState, padded = true) { sourcesSection(state, actions.sources) }
+                }
+                guideOpen -> ContentList(scrollState, padded = true) {
+                    guideSection(state, guide!!, playback?.takeIf { state.selected != null }, actions.guide, actions.fullscreen, actions.toggleFavorite)
+                }
+                state.destination == Destination.HOME -> ContentList(scrollState, spacing = 22.dp) { homeSection(state, pages.home, actions) }
+                state.destination == Destination.TV -> TvScreen(state, pages.tv, playback?.takeIf { state.selected != null }, actions, scrollState)
+                state.destination == Destination.MOVIES -> MoviesScreen(state, pages.movies, playback, actions.vod, scrollState)
+                state.destination == Destination.SERIES -> SeriesScreen(state, pages.series, playback, actions.vod, nextEpisode, scrollState)
+                else -> {
+                    AppHeader("Recherche", state.sourcesOpen, actions.openSources)
+                    ContentList(scrollState, padded = true) { searchSection(state, pages, actions) }
+                }
+            }
+        }
+    }
+}
+
+/** The scrolling body of every screen. [padded] lists get side margins; others lay out edge to edge. */
+@Composable
+fun ContentList(listState: LazyListState, padded: Boolean = false, spacing: Dp = 16.dp, content: LazyListScope.() -> Unit) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().imePadding().testTag("content"),
+        contentPadding = if (padded) PaddingValues(16.dp) else PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(spacing),
+        content = content
+    )
+}
+
+private val Gutter = Modifier.padding(horizontal = 16.dp)
+
+private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItems<Channel>, actions: PhoneActions) {
+    item(key = "hero") { HomeHero(state, actions) }
+    homeVodRows(state, actions.vod)
+    favoriteChannelsRow(state, actions)
+    if (state.hasSources) {
+        // Ten rows at most: one block, so the rows sit together rather than at the sections' spacing.
+        item(key = "discover") {
+            Column {
+                Text("À découvrir", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Gutter.padding(bottom = 6.dp))
+                for (index in 0 until minOf(10, channels.itemCount)) {
+                    channels[index]?.let { channel ->
+                        key(channel.id) { ChannelRow(channel, state, false, actions.toggleFavorite, actions.guide.open, Modifier.padding(horizontal = 12.dp)) { actions.openChannel(channel) } }
                     }
                 }
             }
-            if (!sheetOpen && !guideOpen) item { Text(if (state.sourcesOpen) "Sources" else state.destination.label, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
-            when {
-                state.sourcesOpen -> sourcesSection(state, actions.sources)
-                guideOpen -> guideSection(state, guide!!, playback?.takeIf { state.selected != null }, actions.guide, actions.fullscreen, actions.toggleFavorite)
-                state.destination == Destination.HOME -> homeSection(state, pages.home, actions)
-                state.destination == Destination.TV -> tvSection(state, pages.tv, playback?.takeIf { state.selected != null }, actions)
-                state.destination == Destination.MOVIES -> moviesSection(state, pages.movies, playback, actions.vod)
-                state.destination == Destination.SERIES -> seriesSection(state, pages.series, playback, actions.vod, nextEpisode)
-                else -> searchSection(state, pages, actions)
+        }
+    }
+}
+
+/** One page of the home carousel. */
+private class HeroSlide(val key: String, val title: String, val meta: String?, val synopsis: String?, val imageUrl: String?, val play: (() -> Unit)?, val open: () -> Unit)
+
+/**
+ * Accueil's hero: the newest films (or series) in a carousel that turns on its own, under the brand bar.
+ * Without a provider catalogue it welcomes and leads to the TV tab or the Sources.
+ */
+@Composable
+private fun HomeHero(state: LiveState, actions: PhoneActions) {
+    val slides = remember(state.recentMovies, state.recentSeries, state.categoryNames) {
+        state.recentMovies.take(6).map { movie ->
+            HeroSlide(movie.id, movie.title, listOfNotNull(state.categoryNames[movie.categoryId]?.let { splitZone(it).second }, movie.year?.toString(), movie.durationSeconds?.let(::formatDuration)).joinToString(" · ").ifEmpty { null },
+                movie.synopsis, movie.posterUrl, play = { actions.vod.openMovie(movie); actions.vod.playMovie(movie, false) }, open = { actions.vod.openMovie(movie) })
+        }.ifEmpty {
+            state.recentSeries.take(6).map { series ->
+                HeroSlide(series.id, series.title, listOfNotNull(state.categoryNames[series.categoryId]?.let { splitZone(it).second }, series.year?.toString()).joinToString(" · ").ifEmpty { null },
+                    series.synopsis, series.posterUrl, play = null, open = { actions.vod.openSeries(series) })
+            }
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(500.dp).testTag("home-hero")) {
+        if (slides.isEmpty()) {
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844)))))
+            HeroShade()
+            Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Votre cinéma de poche", fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, lineHeight = 34.sp)
+                Text(
+                    when {
+                        state.hasXtream -> "${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries, depuis ${state.sources.size} source(s)."
+                        state.hasSources -> "${state.channelCount} chaînes dans ${state.imported.size} catégories, depuis ${state.sources.size} source(s)."
+                        else -> "Ajoutez votre playlist M3U ou votre fournisseur Xtream pour retrouver vos chaînes, films et séries ici."
+                    },
+                    fontSize = 14.sp, color = Palette.Muted, textAlign = TextAlign.Center, lineHeight = 20.sp
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    PillButton("Explorer la TV", { actions.navigate(Destination.TV) }, icon = MiptvIcons.Tv)
+                    PillButton("Sources", { actions.openSources(true) }, Modifier.testTag("home-sources"), primary = false)
+                }
+            }
+        } else {
+            val pager = rememberPagerState { slides.size }
+            LaunchedEffect(pager, slides.size) {
+                while (slides.size > 1) {
+                    kotlinx.coroutines.delay(6_000)
+                    if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % slides.size)
+                }
+            }
+            HorizontalPager(pager, Modifier.fillMaxSize(), key = { slides[it].key }) { page ->
+                val slide = slides[page]
+                Box(Modifier.fillMaxSize()) {
+                    Backdrop(slide.imageUrl, "Visuel du film")
+                    HeroShade()
+                    Column(Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 34.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("NOUVEAUTÉ", color = Palette.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text(slide.title, fontSize = 34.sp, fontWeight = FontWeight.Black, lineHeight = 37.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(onClick = slide.open))
+                        slide.meta?.let { Text(it, fontSize = 13.sp, color = Palette.Muted) }
+                        slide.synopsis?.let { Text(it, fontSize = 14.sp, color = Palette.Muted, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                            if (slide.play != null) PillButton("Lecture", slide.play, Modifier.testTag("hero-play"), icon = MiptvIcons.Play)
+                            PillButton(if (slide.play != null) "Détails" else "Voir la série", slide.open, Modifier.testTag("hero-details"), primary = slide.play == null)
+                        }
+                    }
+                }
+            }
+            PagerDots(slides.size, pager.currentPage, Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp))
+        }
+        // The brand bar sits over the picture.
+        Box(Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp)) {
+            Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
+            Text("Accueil", fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
+            IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
+                Icon(MiptvIcons.Settings, contentDescription = "Sources")
             }
         }
     }
 }
 
-private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItems<Channel>, actions: PhoneActions) {
-    item {
-        Column(Modifier.fillMaxWidth().background(
-            Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844))), RoundedCornerShape(24.dp)
-        ).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Votre cinéma de poche", style = MaterialTheme.typography.headlineMedium)
-            Text(
-                when {
-                    state.hasXtream -> "${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries, depuis ${state.sources.size} source(s)."
-                    state.hasSources -> "${state.channelCount} chaînes dans ${state.imported.size} catégories, depuis ${state.sources.size} source(s)."
-                    else -> "Ajoutez votre playlist M3U ou votre fournisseur Xtream pour retrouver vos chaînes, films et séries ici."
-                }
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { actions.navigate(Destination.TV) }) { Text("Explorer la TV") }
-                OutlinedButton(onClick = { actions.openSources(true) }, modifier = Modifier.testTag("home-sources")) { Text("Sources") }
-            }
-        }
-    }
-    homeNowRow(state, actions.guide, actions.openChannel)
-    homeVodRows(state, actions.vod)
-    if (state.hasSources) {
-        item { SectionTitle("À découvrir") }
-        items(minOf(10, channels.itemCount), key = channels.itemKey { "home-${it.id}" }) { index ->
-            channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite, actions.guide.open) { actions.openChannel(channel) } }
-        }
+/** Darkens the top for the brand bar and fades the bottom into the ground. */
+@Composable
+fun BoxScope.HeroShade() {
+    Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Palette.Ink.copy(alpha = 0.55f), 0.25f to Color.Transparent, 0.45f to Color.Transparent, 1f to Palette.Ink)))
+}
+
+/** Full-bleed picture behind a hero, or a labelled tinted ground when there is none. */
+@Composable
+fun BoxScope.Backdrop(url: String?, placeholder: String) {
+    Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844)))), contentAlignment = Alignment.Center) {
+        if (url != null) SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+            error = { HeroPlaceholder(placeholder) }, loading = { })
+        else HeroPlaceholder(placeholder)
     }
 }
 
-private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<Channel>, playback: Playback?, actions: PhoneActions) {
-    if (state.ready && !state.hasSources) {
-        item {
-            Card(Modifier.fillMaxWidth().testTag("no-source")) {
-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Aucune source configurée", style = MaterialTheme.typography.titleLarge)
-                    Text("Ajoutez une playlist M3U par adresse ou depuis un fichier pour afficher vos chaînes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { actions.openSources(true) }, modifier = Modifier.testTag("add-source")) { Text("Ajouter une source") }
+@Composable
+private fun HeroPlaceholder(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text.uppercase(), fontSize = 12.sp, letterSpacing = 2.sp, color = Palette.Text.copy(alpha = 0.35f))
+    }
+}
+
+/** Accueil: the favourite channels as logo tiles with what they air. Tap plays; a long press opens the guide. */
+@OptIn(ExperimentalFoundationApi::class)
+private fun LazyListScope.favoriteChannelsRow(state: LiveState, actions: PhoneActions) {
+    val favorites = state.favoriteChannels
+    if (favorites.isEmpty()) return
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Gutter.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Chaînes favorites", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Toutes", color = Palette.Link, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { actions.openCategory(Category.FAVORITES.id) }.padding(8.dp).testTag("favorites-all"))
+            }
+            LazyRow(modifier = Modifier.testTag("now-row"), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(favorites, key = { it.id }) { channel ->
+                    val nowNext = state.nowNext[channel.id]
+                    Column(
+                        Modifier.width(84.dp).clip(RoundedCornerShape(14.dp))
+                            .combinedClickable(onClickLabel = "Lire", onLongClickLabel = "Guide des programmes", onLongClick = { actions.guide.open(channel) }) { actions.openChannel(channel) }
+                            .testTag("now-${channel.id}"),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ChannelLogo(channel, size = 72.dp, corner = 14.dp)
+                        Text(nowNext?.now?.title ?: splitZone(channel.name).second, fontSize = 12.sp, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
-        return
-    }
-    item {
-        if (playback == null) {
-            Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center) {
-                    Text("Votre aperçu", style = MaterialTheme.typography.titleLarge)
-                    Text("Touchez une chaîne ci-dessous pour lancer la lecture.")
-                }
-            }
-        } else Preview(playback, state.isFavorite(playback.item.id), actions.fullscreen, state.selectedNowNext, state.nowMs) { state.selected?.let(actions.toggleFavorite) }
-    }
-    item { SectionTitle("Catégories") }
-    item {
-        LazyRow(modifier = Modifier.testTag("category-strip"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.categories, key = { it.id }) { item ->
-                FilterChip(selected = state.categoryId == item.id, onClick = { actions.category(item.id) }, label = { Text(item.name) }, modifier = Modifier.testTag("category-${item.id}"))
-            }
-        }
-    }
-    item {
-        OutlinedTextField(value = state.filter, onValueChange = actions.filter, singleLine = true,
-            label = { Text("Filtrer les chaînes") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            trailingIcon = { if (state.filter.isNotEmpty()) IconButton(onClick = { actions.filter("") }) { Icon(Icons.Default.Close, contentDescription = "Effacer") } },
-            modifier = Modifier.fillMaxWidth().testTag("filter-input"))
-    }
-    item { SectionTitle("Chaînes · ${state.visibleCount}") }
-    if (state.visibleCount == 0) item {
-        Text(
-            when {
-                state.filter.isNotBlank() -> "Aucune chaîne ne correspond au filtre."
-                state.categoryId == Category.FAVORITES.id -> "Aucun favori. Touchez l'étoile d'une chaîne pour l'ajouter."
-                else -> "Aucune chaîne dans cette catégorie."
-            },
-            modifier = Modifier.testTag("empty-category")
-        )
-    }
-    items(channels.itemCount, key = channels.itemKey { it.id }) { index ->
-        channels[index]?.let { channel -> ChannelCard(channel, state, state.selected?.id == channel.id, actions.toggleFavorite, actions.guide.open) { actions.select(channel) } }
     }
 }
 
@@ -322,72 +410,59 @@ private fun LazyListScope.tvSection(state: LiveState, channels: LazyPagingItems<
 private fun LazyListScope.searchSection(state: LiveState, pages: ChannelPages, actions: PhoneActions) {
     val channels = pages.search
     item {
-        OutlinedTextField(value = state.query, onValueChange = actions.search,
-            label = { Text(when { state.hasXtream -> "Rechercher une chaîne, un film, une série"; state.hasGuide -> "Rechercher une chaîne ou un programme"; else -> "Rechercher une chaîne" }) }, singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        TextField(value = state.query, onValueChange = actions.search,
+            placeholder = { Text(when { state.hasXtream -> "Rechercher une chaîne, un film, une série"; state.hasGuide -> "Rechercher une chaîne ou un programme"; else -> "Rechercher une chaîne" }) },
+            singleLine = true, shape = RoundedCornerShape(28.dp),
+            leadingIcon = { Icon(MiptvIcons.Search, contentDescription = null) },
+            trailingIcon = { if (state.query.isNotEmpty()) IconButton(onClick = { actions.search("") }) { Icon(MiptvIcons.Close, contentDescription = "Effacer") } },
+            colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, focusedContainerColor = Palette.Panel, unfocusedContainerColor = Palette.Panel),
             modifier = Modifier.fillMaxWidth().testTag("search-input"))
     }
     item {
         Text(
             if (state.hasXtream) "Recherche locale parmi ${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries."
             else "Recherche locale parmi ${state.channelCount} chaînes importées.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontSize = 13.sp, color = Palette.Muted
         )
     }
     if (state.hasXtream) item { SectionTitle("Chaînes · ${state.searchCount}") }
-    if (state.searchCount == 0) item { Text(if (state.hasXtream) "Aucune chaîne." else "Aucun résultat.", color = if (state.hasXtream) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface) }
+    if (state.searchCount == 0) item { Text(if (state.hasXtream) "Aucune chaîne." else "Aucun résultat.", color = if (state.hasXtream) Palette.Muted else Palette.Text) }
     items(channels.itemCount, key = channels.itemKey { "search-${it.id}" }) { index ->
-        channels[index]?.let { channel -> ChannelCard(channel, state, false, actions.toggleFavorite, actions.guide.open) { actions.openChannel(channel) } }
+        channels[index]?.let { channel -> ChannelRow(channel, state, false, actions.toggleFavorite, actions.guide.open) { actions.openChannel(channel) } }
     }
     searchProgrammeSection(state, actions.guide)
     searchVodSections(state, pages.searchMovies, pages.searchSeries, actions.vod)
 }
 
+/** Channel logo on a raised tile; without a picture, the short name of the channel. */
 @Composable
-fun ChannelLogo(channel: Channel, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
-    Box(modifier.size(52.dp).clip(shape).background(Color(0xFF232838)), contentAlignment = Alignment.Center) {
+fun ChannelLogo(channel: Channel, modifier: Modifier = Modifier, size: Dp = 52.dp, corner: Dp = 12.dp, highlight: Boolean = false) {
+    Box(modifier.size(size).clip(RoundedCornerShape(corner)).background(Palette.Raised), contentAlignment = Alignment.Center) {
+        val short = @Composable {
+            // Smaller tiles get a smaller type, so a word is not cut in two.
+            val type = (size.value / 5f).coerceIn(9f, 13f)
+            Text(splitZone(channel.name).second.split(' ').take(2).joinToString(" ").uppercase(), color = if (highlight) Palette.Accent else Palette.Text,
+                fontSize = type.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (type + 2).sp,
+                modifier = Modifier.padding(4.dp))
+        }
         if (channel.logoUrl != null) {
             SubcomposeAsyncImage(
                 model = channel.logoUrl, contentDescription = null, contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().padding(4.dp),
-                error = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                loading = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                modifier = Modifier.fillMaxSize().padding(size / 10),
+                error = { short() }, loading = { }
             )
-        } else Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        } else short()
     }
 }
 
+/** Bookmark toggle shared by channels, films and series. */
 @Composable
 fun FavoriteButton(favorite: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
     IconButton(onClick = onToggle, modifier = modifier) {
         Icon(
-            Icons.Default.Star,
+            if (favorite) MiptvIcons.BookmarkFilled else MiptvIcons.Bookmark,
             contentDescription = if (favorite) "Retirer des favoris" else "Ajouter aux favoris",
-            tint = if (favorite) MaterialTheme.colorScheme.primary else Color(0xFF5A6070)
+            tint = if (favorite) Palette.Accent else Palette.Dim
         )
     }
 }
-
-@Composable
-private fun ChannelCard(channel: Channel, state: LiveState, selected: Boolean, toggleFavorite: (Channel) -> Unit, openGuide: (Channel) -> Unit, onClick: () -> Unit) {
-    val nowNext = state.nowNext[channel.id]
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("channel-${channel.id}"),
-        colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFF3B2534) else MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChannelLogo(channel)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(channel.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                Text(
-                    (if (selected) "En lecture · " else "") + (state.categoryNames[channel.categoryId] ?: M3uParser.DEFAULT_GROUP),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1
-                )
-                // Only when a programme is known: no reserved space otherwise.
-                if (nowNext != null) NowLine(nowNext, state.nowMs, Modifier.padding(top = 4.dp))
-            }
-            GuideButton(channel, Modifier.testTag("guide-${channel.id}"), openGuide)
-            FavoriteButton(state.isFavorite(channel), Modifier.testTag("favorite-${channel.id}")) { toggleFavorite(channel) }
-        }
-    }
-}
-

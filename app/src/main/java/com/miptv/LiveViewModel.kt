@@ -67,6 +67,8 @@ data class LiveState(
     val query: String = "",
     /** Name filter applied inside the TV tab, on top of the selected category. */
     val filter: String = "",
+    /** The TV tab shows the channels of [categoryId] rather than the list of categories. */
+    val channelsOpen: Boolean = false,
     val sourcesOpen: Boolean = false,
     /** Only meaningful with something playing; cleared whenever playback is cleared. */
     val fullscreen: Boolean = false,
@@ -146,6 +148,7 @@ class LiveViewModel(
         query = saved.get<String>("query").orEmpty(),
         filter = saved.get<String>("filter").orEmpty(),
         sourcesOpen = saved.get<Boolean>("sourcesOpen") ?: false,
+        channelsOpen = saved.get<Boolean>("channelsOpen") ?: false,
         movieCategoryId = saved.get<String>("movieCategory") ?: Category.ALL.id,
         movieFilter = saved.get<String>("movieFilter").orEmpty(),
         seriesCategoryId = saved.get<String>("seriesCategory") ?: Category.ALL.id,
@@ -306,7 +309,9 @@ class LiveViewModel(
     fun navigate(destination: Destination) {
         saved["destination"] = destination.name
         // One player: changing tab stops whatever plays, as the Sprint 2 TV tab did.
-        mutable.update { it.copy(destination = destination, selected = null, vod = null, fullscreen = false) }
+        // The TV tab starts again from its list of categories.
+        saved["channelsOpen"] = false
+        mutable.update { it.copy(destination = destination, selected = null, vod = null, fullscreen = false, channelsOpen = false) }
         openSources(false)
     }
 
@@ -315,6 +320,26 @@ class LiveViewModel(
         if (state.categories.none { it.id == id } || id == state.categoryId) return
         saved["category"] = id
         mutable.update { it.copy(categoryId = id, selected = null, fullscreen = false) }
+    }
+
+    /** From the list of categories (or « Toutes » on Accueil): the channels of [id], in the TV tab. */
+    fun openCategory(id: String) {
+        if (mutable.value.categories.none { it.id == id }) return
+        if (mutable.value.destination != Destination.TV || mutable.value.sourcesOpen) navigate(Destination.TV)
+        category(id)
+        saved["channelsOpen"] = true
+        mutable.update { it.copy(channelsOpen = true) }
+    }
+
+    /** Back from the channels of a category to the list of categories; playback stops. */
+    fun closeCategory() {
+        saved["channelsOpen"] = false
+        mutable.update { it.copy(channelsOpen = false, selected = null, fullscreen = false) }
+    }
+
+    /** Back from the player to the channels of its category. */
+    fun closePlayer() {
+        mutable.update { it.copy(selected = null, fullscreen = false) }
     }
 
     fun select(channel: Channel) {
@@ -329,6 +354,9 @@ class LiveViewModel(
             navigate(Destination.TV)
             val state = mutable.value
             if (!ChannelQuery(state.categoryId).inCategory(real, state.favoriteIds)) category(real.categoryId)
+            // Back from the player then leads to the channels of its category.
+            saved["channelsOpen"] = true
+            mutable.update { it.copy(channelsOpen = true) }
             select(real)
         }
     }
@@ -639,8 +667,8 @@ fun formatTime(epochMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDe
 /** « 20:00 – 20:35 ». */
 fun formatSlot(programme: Programme, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String = "${formatTime(programme.startMs, zone)} – ${formatTime(programme.stopMs, zone)}"
 
-/** « Ensuite · 20:35 Météo », or null. */
-fun nextLabel(nowNext: NowNext, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String? = nowNext.next?.let { "Ensuite · ${formatTime(it.startMs, zone)} ${it.title}" }
+/** « À suivre 20:35 · Météo », or null. */
+fun nextLabel(nowNext: NowNext, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String? = nowNext.next?.let { "À suivre ${formatTime(it.startMs, zone)} · ${it.title}" }
 
 fun Movie.toPlayItem(resumeMs: Long = 0L) = PlayItem(id, title, movieSubtitle(), streamRef().format(), live = false, resumeMs = resumeMs)
 
