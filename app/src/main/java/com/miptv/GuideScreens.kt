@@ -13,8 +13,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,8 +55,8 @@ fun GuideButton(channel: Channel, modifier: Modifier = Modifier, onOpen: (Channe
     }
 }
 
-/** Number of lazy items the guide sheet places before its programme list (header, player, day chips, title). */
-const val GUIDE_HEADER_ITEMS = 4
+/** Number of lazy items the guide sheet places before its programme list (header, player, limited-guide note, day chips, title). */
+const val GUIDE_HEADER_ITEMS = 5
 
 /**
  * The guide of one channel: header with the channel, the inline player when it is the one playing (or « Lire »),
@@ -77,20 +80,39 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
             Preview(playback, state.isFavorite(channel), fullscreen, state.nowNext[channel.id], state.nowMs, channel = channel, subtitle = state.categoryNames[channel.categoryId]) { toggleFavorite(channel) }
         } else PillButton("Lire", { actions.play(channel) }, Modifier.testTag("guide-play"), icon = MiptvIcons.Play)
     }
+    val source = state.sources.firstOrNull { it.id == channel.sourceId }
+    item {
+        // A provider's full guide follows its favourites; other channels only get the next few programmes.
+        if (source?.kind == SourceKind.XTREAM && source.hasGuide && !channel.tvgId.isNullOrBlank() && !state.isFavorite(channel)) {
+            Card(Modifier.fillMaxWidth().testTag("guide-limited"), colors = CardDefaults.cardColors(containerColor = Palette.Panel)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Guide limité aux prochaines heures. En favori, la chaîne reçoit le guide complet du fournisseur.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { toggleFavorite(channel) }, modifier = Modifier.testTag("guide-limited-favorite")) { Text("Ajouter aux favoris") }
+                }
+            }
+        }
+    }
+    val end = sheet.guideEndMs
     item {
         LazyRow(modifier = Modifier.testTag("guide-days"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.guideDays, key = { it }) { day ->
-                FilterChip(selected = sheet.dayStartMs == day, onClick = { actions.day(day) }, label = { Text(dayLabel(day, state.nowMs)) }, modifier = Modifier.testTag("guide-day-$day"))
+                // Days the known guide does not reach stay selectable, but faded.
+                val beyond = end != null && day >= end
+                FilterChip(
+                    selected = sheet.dayStartMs == day, onClick = { actions.day(day) }, label = { Text(dayLabel(day, state.nowMs)) },
+                    modifier = Modifier.alpha(if (beyond) 0.45f else 1f).semantics { if (beyond) stateDescription = "Sans programme" }.testTag("guide-day-$day")
+                )
             }
         }
     }
     item { SectionTitle("Programmes · ${sheet.programmes.size}") }
-    val source = state.sources.firstOrNull { it.id == channel.sourceId }
     when {
         sheet.loading -> item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text("Chargement du guide…") } }
         sheet.programmes.isEmpty() -> item {
             Text(
                 when {
+                    end != null && sheet.dayStartMs >= end ->
+                        "Pas encore de programmes pour ce jour : le guide connu s'arrête ${dayLabel(dayStart(end), state.nowMs).replaceFirstChar { it.lowercase() }} à ${formatTime(end)}."
                     source != null && !source.hasGuide -> "Aucun guide pour cette source. Ajoutez l'adresse XMLTV de la playlist dans Sources."
                     source?.kind == SourceKind.XTREAM -> "Aucun programme connu pour cette chaîne. Les favoris reçoivent le guide complet à l'actualisation ; les autres chaînes, les prochains programmes à la lecture."
                     else -> "Aucun programme ce jour."

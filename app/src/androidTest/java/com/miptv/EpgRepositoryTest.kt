@@ -70,6 +70,8 @@ class EpgRepositoryTest {
         assertEquals(1, count("SELECT COUNT(*) FROM programmes"))
     }
 
+    @Test fun guideEndIsTheLastKnownProgramme() = runBlocking { EpgScenarios.guideEndIsTheLastKnownProgramme(repository, loader) }
+
     @Test fun purgeDropsFinishedProgrammes() = runBlocking {
         EpgScenarios.purgeDropsFinishedProgrammes(repository, loader, clock)
         assertEquals(1, count("SELECT COUNT(*) FROM programmes"))

@@ -176,6 +176,19 @@ object EpgScenarios {
         assertEquals(0, repository.countProgrammes("nouveau", GuideFixtures.NOW).first())
     }
 
+    /** Where each channel's guide stops: the end of its last programme, null without any; it follows the imports. */
+    suspend fun guideEndIsTheLastKnownProgramme(repository: ChannelRepository, loader: GuideLoader) {
+        playlistGuideIsImportedAndJoined(repository, loader)
+        val tf1 = repository.channelNamed("TF1")
+        assertEquals(GuideFixtures.H00_10_NEXT, repository.guideEnd(tf1.id).first())
+        assertEquals(GuideFixtures.H21_45, repository.guideEnd(repository.channelNamed("Arte").id).first())
+        assertNull(repository.guideEnd(repository.channelNamed("Chaîne locale").id).first())
+        assertNull(repository.guideEnd("unknown").first())
+        loader[GuideFixtures.GUIDE2_URL] = GuideFixtures.GUIDE_V2
+        repository.setEpgUrl(1, GuideFixtures.GUIDE2_URL)
+        assertEquals(GuideFixtures.H21_00, repository.guideEnd(tf1.id).first())
+    }
+
     /** A guide listing a channel's evening twice keeps one copy; a programme running a few minutes over is cut. */
     suspend fun overlappingGuideKeepsOneTimeline(repository: ChannelRepository, loader: GuideLoader) {
         loader[GuideFixtures.PLAYLIST_URL] = GuideFixtures.PLAYLIST

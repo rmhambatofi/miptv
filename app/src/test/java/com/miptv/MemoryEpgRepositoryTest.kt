@@ -17,5 +17,6 @@ class MemoryEpgRepositoryTest {
     @Test fun overlappingGuideKeepsOneTimeline() = runBlocking { EpgScenarios.overlappingGuideKeepsOneTimeline(repository, loader) }
     @Test fun overlappingShortEpgKeepsOneTimeline() = runBlocking { EpgScenarios.overlappingShortEpgKeepsOneTimeline(repository, xtream) }
     @Test fun staleGuidesAreReloaded() = runBlocking { EpgScenarios.staleGuidesAreReloaded(repository, loader, clock) }
+    @Test fun guideEndIsTheLastKnownProgramme() = runBlocking { EpgScenarios.guideEndIsTheLastKnownProgramme(repository, loader) }
     @Test fun purgeDropsFinishedProgrammes() = runBlocking { EpgScenarios.purgeDropsFinishedProgrammes(repository, loader, clock) }
 }

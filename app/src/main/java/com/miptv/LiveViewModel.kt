@@ -54,7 +54,8 @@ data class SeriesSheet(val series: Series, val info: SeriesInfo? = null, val sea
 
 /** A film or episode with a resume position, for the home row. */
 /** The guide of one channel for one local day; [focusMs] is the programme to scroll to (the one on air, or a search hit). */
-data class GuideSheet(val channel: Channel, val dayStartMs: Long, val programmes: List<Programme> = emptyList(), val loading: Boolean = true, val focusMs: Long? = null)
+/** [guideEndMs]: end of the channel's last known programme, null without any; days from there on are empty. */
+data class GuideSheet(val channel: Channel, val dayStartMs: Long, val programmes: List<Programme> = emptyList(), val loading: Boolean = true, val focusMs: Long? = null, val guideEndMs: Long? = null)
 
 data class ResumeItem(val item: PlayItem, val posterUrl: String?, val progress: PlaybackProgress, val movieId: String? = null, val seriesId: String? = null)
 
@@ -202,6 +203,17 @@ class LiveViewModel(
                         val sheet = state.guideSheet
                         if (sheet == null || sheet.channel.id != loaded.first.first || sheet.dayStartMs != loaded.first.second) state
                         else state.copy(guideSheet = sheet.copy(programmes = loaded.second, loading = false))
+                    }
+                }
+        }
+        viewModelScope.launch {
+            mutable.map { it.guideSheet?.channel?.id }.distinctUntilChanged()
+                .flatMapLatest { id -> if (id == null) flowOf(null) else repository.guideEnd(id).map { id to it } }
+                .collect { end ->
+                    if (end == null) return@collect
+                    mutable.update { state ->
+                        val sheet = state.guideSheet
+                        if (sheet == null || sheet.channel.id != end.first) state else state.copy(guideSheet = sheet.copy(guideEndMs = end.second))
                     }
                 }
         }
@@ -428,14 +440,17 @@ class LiveViewModel(
     /** Opens the guide of a channel on today, focused on what is on air; Xtream channels fetch their short EPG. */
     fun openGuide(channel: Channel) {
         val now = clock()
-        mutable.update { it.copy(nowMs = now, guideSheet = GuideSheet(channel, dayStart(now), focusMs = it.nowNext[channel.id]?.now?.startMs)) }
+        mutable.update { it.copy(nowMs = now, guideSheet = GuideSheet(channel, dayStart(now), focusMs = it.nowNext[channel.id]?.now?.startMs, guideEndMs = it.guideEndOf(channel))) }
         viewModelScope.launch { repository.ensureShortEpg(channel.id) }
     }
 
     /** From a search hit: the guide of the channel on the programme's day, scrolled to it. */
     fun openGuide(hit: ProgrammeHit) {
-        mutable.update { it.copy(nowMs = clock(), guideSheet = GuideSheet(hit.channel, dayStart(hit.programme.startMs), focusMs = hit.programme.startMs)) }
+        mutable.update { it.copy(nowMs = clock(), guideSheet = GuideSheet(hit.channel, dayStart(hit.programme.startMs), focusMs = hit.programme.startMs, guideEndMs = it.guideEndOf(hit.channel))) }
     }
+
+    /** Reopening the sheet of the same channel keeps its known end: the flow does not emit again for an unchanged channel. */
+    private fun LiveState.guideEndOf(channel: Channel): Long? = guideSheet?.takeIf { it.channel.id == channel.id }?.guideEndMs
 
     fun guideDay(dayStartMs: Long) {
         mutable.update { state ->

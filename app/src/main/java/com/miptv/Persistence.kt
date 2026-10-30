@@ -343,6 +343,8 @@ interface CatalogDao {
     fun upNext(nowMs: Long): Flow<List<ChannelProgrammeRow>>
     @Query("SELECT p.* FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE c.id = :channelId AND p.stopMs > :fromMs AND p.startMs < :toMs ORDER BY p.startMs")
     fun programmesOf(channelId: String, fromMs: Long, toMs: Long): Flow<List<ProgrammeEntity>>
+    @Query("SELECT MAX(p.stopMs) FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE c.id = :channelId")
+    fun guideEndOf(channelId: String): Flow<Long?>
     @Query("SELECT c.id AS channelId, p.* FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE p.stopMs > :nowMs AND p.searchTitle LIKE :pattern ESCAPE '\\' ORDER BY p.startMs, c.id LIMIT :limit")
     fun searchProgrammes(pattern: String, nowMs: Long, limit: Int): Flow<List<ChannelProgrammeRow>>
     @Query("SELECT COUNT(*) FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE p.stopMs > :nowMs AND p.searchTitle LIKE :pattern ESCAPE '\\'")
@@ -881,6 +883,8 @@ class RoomChannelRepository(
 
     override fun programmes(channelId: String, fromMs: Long, toMs: Long): Flow<List<Programme>> =
         dao.programmesOf(channelId, fromMs, toMs).map { list -> list.map { it.toProgramme() } }
+
+    override fun guideEnd(channelId: String): Flow<Long?> = dao.guideEndOf(channelId)
 
     override fun searchProgrammes(text: String, nowMs: Long, limit: Int): Flow<List<ProgrammeHit>> {
         if (text.isBlank()) return flowOf(emptyList())

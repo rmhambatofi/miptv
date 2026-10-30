@@ -229,6 +229,23 @@ class GuideViewModelTest {
         assertEquals(1, loader.opened[GuideFixtures.GUIDE_URL])
     }
 
+    @Test fun theGuideSheetKnowsWhereTheChannelGuideStops() {
+        val vm = loaded()
+        val tf1 = channel("TF1")
+        vm.openGuide(tf1)
+        dispatcher.idle()
+        assertEquals(GuideFixtures.H00_10_NEXT, vm.state.value.guideSheet!!.guideEndMs)
+        vm.guideDay(vm.state.value.guideDays[2])
+        dispatcher.idle()
+        assertEquals(GuideFixtures.H00_10_NEXT, vm.state.value.guideSheet!!.guideEndMs)
+        assertTrue(vm.state.value.guideSheet!!.programmes.isEmpty())
+        vm.openGuide(tf1) // same channel again: the end stays known
+        assertEquals(GuideFixtures.H00_10_NEXT, vm.state.value.guideSheet!!.guideEndMs)
+        vm.openGuide(channel("Chaîne locale"))
+        dispatcher.idle()
+        assertNull(vm.state.value.guideSheet!!.guideEndMs)
+    }
+
     @Test fun guideFormattingInParisTime() {
         val paris = ZoneId.of("Europe/Paris")
         assertEquals("20:35", formatTime(GuideFixtures.H20_35, paris))

@@ -234,6 +234,8 @@ interface ChannelRepository {
     fun nowAndNext(nowMs: Long): Flow<Map<String, NowNext>>
     /** Programmes of one channel overlapping `[fromMs, toMs[`, in order. */
     fun programmes(channelId: String, fromMs: Long, toMs: Long): Flow<List<Programme>>
+    /** End of the last known programme of one channel, null without any: where its guide stops. */
+    fun guideEnd(channelId: String): Flow<Long?>
     /** Programmes still to come (or on air) whose title contains [text], soonest first, at most [limit]. */
     fun searchProgrammes(text: String, nowMs: Long, limit: Int = 200): Flow<List<ProgrammeHit>>
     fun countProgrammes(text: String, nowMs: Long): Flow<Int>

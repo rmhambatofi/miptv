@@ -33,7 +33,7 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 
 - **Dépôt** : `guideEnd(channelId): Flow<Long?>` (fin du dernier programme connu de la chaîne), en mémoire et dans Room.
 - **Interface** : bandeau « Guide limité aux prochaines heures » + « Ajouter aux favoris » pour une chaîne Xtream hors favoris ; puces de jour estompées au-delà de `guideEnd` ; état vide « Pas encore de programmes pour ce jour ».
-- **Tests** : scénario partagé pour `guideEnd` ; `GuideViewModelTest` ; `GuidePhoneTest` (bandeau, puce estompée, état vide).
+- **Tests** : scénario partagé `guideEndIsTheLastKnownProgramme` (deux dépôts) ; `GuideViewModelTest` (fin connue, conservée en rouvrant la même chaîne) ; `GuidePhoneTest` (bandeau puis « Ajouter aux favoris », puce estompée annoncée « Sans programme » aux lecteurs d'écran, état vide). Le bandeau ne s'affiche que pour une chaîne qui a une clé de guide : sans `epg_channel_id`, un favori n'apporterait rien.
 
 ## Lot 4 — Validation et documentation
 
