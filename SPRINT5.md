@@ -45,3 +45,16 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 ## Hors périmètre
 
 Rattrapage (catch-up, `has_archive`), rappels, grille multi-chaînes, guide complet pour les chaînes non favorites (récemment regardées), images de programmes, Android TV et tablettes.
+
+## Bilan (30 octobre 2026)
+
+Lots 1 à 4 livrés sur `feature/sprint5-guide`, un commit chacun. 122 tests unitaires et 41 tests instrumentés réussis ; lint 30 avertissements, tous des versions de dépendances. Validation sur le Xiaomi 15 (détail dans `VALIDATION.md`, Sprint 5) :
+
+- étoile posée depuis le bandeau sur « |FR| Gulli ᵁᴴᴰ » : téléchargement lancé 3 s après, feuille passée de 3 à 15 programmes du jour en 10 à 15 s, sans passer par Sources ni afficher de message ;
+- bandeau, jours estompés et message « le guide connu s'arrête demain à 15:20 » conformes ;
+- travaux `guide-daily` et `guide-launch` exécutés au lancement avec leurs contraintes ; purge à 12 h constatée ;
+- erreur de guide (scénario 8 du Sprint 4) non rejouée sur l'appareil pour ne pas remplacer l'adresse du guide de l'utilisateur ; couverte par les tests.
+
+Décisions prises en cours de route : rechargement silencieux (le résultat s'affiche sur la fiche source) ; téléchargement lancé hors de toute annulation pour ne jamais laisser une fausse erreur sur la source ; travail toujours en `success`, les erreurs restant sur les fiches ; jours estompés annoncés « Sans programme » par `stateDescription`, sans changer les étiquettes de test.
+
+Limite constatée : HyperOS retire de JobScheduler le travail quotidien d'une application passée en arrière-plan sans « Démarrage automatique ». Sur ce téléphone, le guide se recharge donc surtout au lancement (`guide-launch`, plus de 24 h), et WorkManager réinscrit `guide-daily` à chaque démarrage à froid. Piste pour la suite, non engagée : signaler dans Sources que le démarrage automatique garde le guide à jour sur les téléphones Xiaomi.
