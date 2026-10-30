@@ -68,7 +68,11 @@ jobs:
           cores: 3
           ram-size: 4096M
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest
+          script: |
+            mkdir -p app/build/reports/androidTests
+            adb logcat -c
+            nohup adb logcat -v threadtime > app/build/reports/androidTests/logcat.txt 2>&1 &
+            ./gradlew connectedDebugAndroidTest
       - uses: actions/upload-artifact@v4
         if: always()
         with:
