@@ -232,12 +232,9 @@ Les tests ViewModel utilisent `MemoryChannelRepository` avec un chargeur factice
 ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.perf=true
 ```
 
-**GitHub Actions** (`.github/workflows/android.yml`), sur chaque push vers `main` et chaque PR vers `main` :
+**GitHub Actions** (`.github/workflows/android.yml`), sur chaque push vers `main` et chaque PR vers `main` : un job `build` qui lance les tests unitaires et le lint, compile l'APK et l'APK de test, et vérifie que le schéma Room exporté est commité. Aucun déploiement ni fusion automatique.
 
-- `build` : tests unitaires, lint, APK et APK de test, et vérification que le schéma Room exporté est commité ;
-- `touch-tests` : tests instrumentés sur un émulateur Pixel 2 API 35. Le journal de l'émulateur (`logcat.txt`) est joint au rapport.
-
-Aucun déploiement ni fusion automatique.
+Les tests instrumentés ne tournent pas en CI : sur les émulateurs de GitHub (rendu logiciel swiftshader), l'émulateur se figeait par intermittence pendant `GuidePhoneTest.favouritesGetAHomeRow`, à l'appui long sur une chaîne favorite de l'Accueil, sans que l'app plante. Ils se lancent sur un émulateur ou un téléphone avant chaque fusion (`./gradlew connectedDebugAndroidTest`).
 
 Les tests sur appareil réel, notamment avec un vrai fournisseur Xtream et un vrai guide XMLTV, sont décrits dans `VALIDATION.md`, avec leurs résultats.
 
