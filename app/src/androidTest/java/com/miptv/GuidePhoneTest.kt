@@ -111,9 +111,8 @@ class GuidePhoneTest {
         compose.onNodeWithTag("nav-HOME").performClick()
         scrollTo("now-row")
         compose.onNodeWithTag("now-${tf1.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Journal de 20h")))
-        // A long press on a favourite opens its guide; a tap plays it. Through the accessibility action: an injected
-        // long-press gesture took the CI emulator offline at this step, three runs in five.
-        compose.onNodeWithTag("now-${tf1.id}").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        // A long press on a favourite opens its guide; a tap plays it.
+        compose.onNodeWithTag("now-${tf1.id}").performTouchInput { longClick() }
         compose.waitUntil(5_000) { model.state.value.guideSheet != null }
         compose.onNodeWithTag("guide-title").assertTextContains("TF1")
     }
