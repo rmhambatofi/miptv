@@ -54,6 +54,17 @@ class EpgRepositoryTest {
         assertEquals(0, count("SELECT COUNT(*) FROM programmes"))
     }
 
+    @Test fun overlappingGuideKeepsOneTimeline() = runBlocking {
+        EpgScenarios.overlappingGuideKeepsOneTimeline(repository, loader)
+        assertEquals(5, count("SELECT COUNT(*) FROM programmes"))
+        assertEquals(1, count("SELECT COUNT(*) FROM programmes WHERE channelKey = 'm6.fr' AND title = 'Avant' AND stopMs = ${GuideFixtures.NOW}"))
+    }
+
+    @Test fun overlappingShortEpgKeepsOneTimeline() = runBlocking {
+        EpgScenarios.overlappingShortEpgKeepsOneTimeline(repository, xtream)
+        assertEquals(3, count("SELECT COUNT(*) FROM programmes"))
+    }
+
     @Test fun purgeDropsFinishedProgrammes() = runBlocking {
         EpgScenarios.purgeDropsFinishedProgrammes(repository, loader, clock)
         assertEquals(1, count("SELECT COUNT(*) FROM programmes"))

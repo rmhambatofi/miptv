@@ -360,7 +360,7 @@ class MemoryChannelRepository(
                 val keys = channels.mapNotNullTo(HashSet()) { keyOf(it) }
                 kept = programmes.filter { it.channelKey in keys }
             }
-            guides[sourceId] = kept
+            guides[sourceId] = resolveOverlaps(kept)
             purge(now)
             updateSource(sourceId) { it.copy(epgRefreshedAt = now, epgError = null, programmeCount = guides[sourceId]?.size ?: 0) }
             guideVersion.update { it + 1 }
@@ -431,7 +431,8 @@ class MemoryChannelRepository(
         shortEpgFetched[channelId] = now
         if (fetched.isEmpty()) return false
         val starts = fetched.mapTo(HashSet()) { it.startMs }
-        guides[ref.sourceId] = guides[ref.sourceId].orEmpty().filterNot { it.channelKey == key && it.startMs in starts } + fetched
+        val (same, others) = guides[ref.sourceId].orEmpty().filterNot { it.channelKey == key && it.startMs in starts }.partition { it.channelKey == key }
+        guides[ref.sourceId] = others + resolveOverlaps(same + fetched)
         guideVersion.update { it + 1 }
         true
     }

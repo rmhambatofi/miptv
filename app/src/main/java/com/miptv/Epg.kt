@@ -307,6 +307,31 @@ fun guideKey(tvgId: String?, name: String, guideIds: Set<String>, byName: Map<St
     return id
 }
 
+/**
+ * One timeline per guide channel: some providers list a schedule twice, shifted by an hour, so several programmes are
+ * on air at once. In start order, a programme overlapping the one kept before it is dropped when it bears the same
+ * title, starts with it or overlaps it for at least half its own length (a duplicate); a shorter overlap clips the
+ * previous one, so guides whose programmes run a few minutes over keep them all. The earlier copy wins. The result
+ * holds each channel's programmes in start order.
+ */
+fun resolveOverlaps(programmes: List<Programme>): List<Programme> {
+    val out = ArrayList<Programme>(programmes.size)
+    for ((_, list) in programmes.groupBy { it.channelKey }) {
+        val kept = ArrayList<Programme>(list.size)
+        for (programme in list.sortedBy { it.startMs }) {
+            val previous = kept.lastOrNull()
+            if (previous == null || programme.startMs >= previous.stopMs) { kept += programme; continue }
+            val overlap = minOf(previous.stopMs, programme.stopMs) - programme.startMs
+            val duplicate = programme.startMs == previous.startMs || searchKey(programme.title) == searchKey(previous.title)
+            if (duplicate || overlap * 2 >= programme.durationMs) continue
+            kept[kept.lastIndex] = previous.copy(stopMs = programme.startMs)
+            kept += programme
+        }
+        out += kept
+    }
+    return out
+}
+
 /** French message for a failed guide download or parse. Never echoes the guide address. */
 fun describeEpgError(error: Throwable): String = when (error) {
     is EpgException -> error.message ?: XmltvParser.UNEXPECTED

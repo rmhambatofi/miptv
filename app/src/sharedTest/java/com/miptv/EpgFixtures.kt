@@ -134,6 +134,19 @@ http://stream.example/tf1-bis.ts
 </tv>
 """
 
+    /** TF1's evening twice, the second copy one hour late (as some providers send it); M6's « Avant » runs 5 minutes over. */
+    const val GUIDE_OVERLAPS = """<tv>
+  <programme start="20261029200000 +0100" stop="20261029203500 +0100" channel="tf1.fr"><title>Journal de 20h</title></programme>
+  <programme start="20261029203500 +0100" stop="20261029204000 +0100" channel="tf1.fr"><title>Météo</title></programme>
+  <programme start="20261029204000 +0100" stop="20261029224000 +0100" channel="tf1.fr"><title>Film : Le Voyage</title></programme>
+  <programme start="20261029210000 +0100" stop="20261029213500 +0100" channel="tf1.fr"><title>Journal de 20h</title></programme>
+  <programme start="20261029213500 +0100" stop="20261029214000 +0100" channel="tf1.fr"><title>Météo</title></programme>
+  <programme start="20261029214000 +0100" stop="20261029234000 +0100" channel="tf1.fr"><title>Film : Le Voyage</title></programme>
+  <programme start="20261029200000 +0100" stop="20261029203500 +0100" channel="m6.fr"><title>Avant</title></programme>
+  <programme start="20261029203000 +0100" stop="20261029213000 +0100" channel="m6.fr"><title>Capital</title></programme>
+</tv>
+"""
+
     const val GUIDE_V2 = """<tv><programme start="20261029200000 +0100" stop="20261029210000 +0100" channel="tf1.fr"><title>Nouveau</title></programme></tv>"""
 }
 

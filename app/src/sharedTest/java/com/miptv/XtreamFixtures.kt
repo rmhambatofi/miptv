@@ -80,6 +80,15 @@ object XtreamFixtures {
       {"id":"5","title":"Nuit blanche","start_timestamp":"1793310000","stop_timestamp":"1793313600"}
     ]}"""
 
+    /** Journal, Météo and Film from 20:00, then Journal and Météo again one hour late, inside the film. */
+    const val SHORT_EPG_SHIFTED = """{"epg_listings":[
+      {"title":"Sm91cm5hbCBkZSAyMGg=","start_timestamp":"1793300400","stop_timestamp":"1793302500"},
+      {"title":"TcOpdMOpbw==","start_timestamp":"1793302500","stop_timestamp":"1793302800"},
+      {"title":"RmlsbSA6IExlIFZveWFnZQ==","start_timestamp":"1793302800","stop_timestamp":"1793310000"},
+      {"title":"Sm91cm5hbCBkZSAyMGg=","start_timestamp":"1793304000","stop_timestamp":"1793306100"},
+      {"title":"TcOpdMOpbw==","start_timestamp":"1793306100","stop_timestamp":"1793306400"}
+    ]}"""
+
     const val SHORT_EPG_EMPTY = """{"epg_listings":[]}"""
 
     const val HTML_LOGIN_PAGE = "<!DOCTYPE html><html><head><title>Login</title></head><body>Forbidden</body></html>"
