@@ -8,6 +8,7 @@ import androidx.paging.PagingState
 import androidx.paging.map
 import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Database
 import androidx.room.Embedded
 import androidx.room.Entity
@@ -346,6 +347,10 @@ interface CatalogDao {
     fun searchProgrammes(pattern: String, nowMs: Long, limit: Int): Flow<List<ChannelProgrammeRow>>
     @Query("SELECT COUNT(*) FROM programmes p JOIN channels c ON c.sourceId = p.sourceId AND c.epgKey = p.channelKey WHERE p.stopMs > :nowMs AND p.searchTitle LIKE :pattern ESCAPE '\\'")
     fun countProgrammes(pattern: String, nowMs: Long): Flow<Int>
+    @Query("SELECT * FROM programmes WHERE sourceId = :sourceId") suspend fun programmesOfSource(sourceId: Long): List<ProgrammeEntity>
+    @Query("SELECT * FROM programmes WHERE sourceId = :sourceId AND channelKey = :channelKey") suspend fun programmesOfKey(sourceId: Long, channelKey: String): List<ProgrammeEntity>
+    @Delete suspend fun deleteProgrammeRows(rows: List<ProgrammeEntity>)
+    @Update suspend fun updateProgrammeRows(rows: List<ProgrammeEntity>)
     /** A guide key with a programme ending after [afterMs], for the short-EPG cache check. */
     @Query("SELECT MAX(stopMs) FROM programmes WHERE sourceId = :sourceId AND channelKey = :channelKey AND stopMs > :afterMs") suspend fun lastStop(sourceId: Long, channelKey: String, afterMs: Long): Long?
 
@@ -844,6 +849,7 @@ class RoomChannelRepository(
                     // A public guide covers far more channels than a playlist: keep only what a channel can show.
                     dao.deleteOrphanProgrammes(sourceId)
                 }
+                untangle(dao.programmesOfSource(sourceId))
                 dao.purgeProgrammes(now - EpgWindow.PURGE_AFTER_MS)
                 dao.updateSource(entity.copy(epgRefreshedAt = now, epgError = null, programmeCount = dao.countProgrammes(sourceId)))
             }
@@ -899,8 +905,20 @@ class RoomChannelRepository(
         val programmes = try { xtream.shortEpg(account, ref.sourceId, ref.streamId, key, EpgWindow.SHORT_EPG_LIMIT) } catch (_: Exception) { return false }
         shortEpgFetched[channelId] = now
         if (programmes.isEmpty()) return false
-        dao.insertProgrammes(programmes.map { ProgrammeEntity.from(it, ref.sourceId) })
+        database.withTransaction {
+            dao.insertProgrammes(programmes.map { ProgrammeEntity.from(it, ref.sourceId) })
+            untangle(dao.programmesOfKey(ref.sourceId, key))
+        }
         return true
+    }
+
+    /** Stores [resolveOverlaps] of [rows]: duplicates are deleted, clipped programmes get their new end. */
+    private suspend fun untangle(rows: List<ProgrammeEntity>) {
+        val stops = resolveOverlaps(rows.map { it.toProgramme() }).associate { (it.channelKey to it.startMs) to it.stopMs }
+        val dropped = rows.filter { (it.channelKey to it.startMs) !in stops }
+        val clipped = rows.mapNotNull { row -> stops[row.channelKey to row.startMs]?.takeIf { it != row.stopMs }?.let { row.copy(stopMs = it) } }
+        if (dropped.isNotEmpty()) dao.deleteProgrammeRows(dropped)
+        if (clipped.isNotEmpty()) dao.updateProgrammeRows(clipped)
     }
 
     override suspend fun purgeProgrammes() = dao.purgeProgrammes(clock() - EpgWindow.PURGE_AFTER_MS)

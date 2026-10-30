@@ -40,9 +40,10 @@ class GuidePhoneTest {
         val model = launch()
         val tf1 = channel("TF1")
         compose.onNodeWithTag("nav-TV").performClick()
+        compose.onNodeWithTag("category-all").performClick()
         scrollTo("channel-${tf1.id}")
         compose.onNodeWithTag("channel-${tf1.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Journal de 20h")))
-        compose.onNodeWithTag("channel-${tf1.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Ensuite · 20:35 Météo")))
+        compose.onNodeWithTag("channel-${tf1.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasText("À suivre 20:35 · Météo")))
         val locale = channel("Chaîne locale")
         scrollTo("channel-${locale.id}")
         compose.onNodeWithTag("channel-${locale.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasTestTag("now-line")).not())
@@ -71,18 +72,20 @@ class GuidePhoneTest {
         compose.onNodeWithTag("preview-now", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Journal de 20h")))
     }
 
-    @Test fun favouritesOnAirGetAHomeRow() {
+    @Test fun favouritesGetAHomeRow() {
         val model = launch()
         val tf1 = channel("TF1")
         compose.onNodeWithTag("now-row").assertDoesNotExist()
         compose.onNodeWithTag("nav-TV").performClick()
+        compose.onNodeWithTag("category-all").performClick()
         scrollTo("favorite-${tf1.id}")
         compose.onNodeWithTag("favorite-${tf1.id}").performClick()
         compose.waitUntil(5_000) { model.state.value.onAirFavorites.size == 1 }
         compose.onNodeWithTag("nav-HOME").performClick()
         scrollTo("now-row")
         compose.onNodeWithTag("now-${tf1.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Journal de 20h")))
-        compose.onNodeWithTag("now-guide-${tf1.id}").performClick()
+        // A long press on a favourite opens its guide; a tap plays it.
+        compose.onNodeWithTag("now-${tf1.id}").performTouchInput { longClick() }
         compose.waitUntil(5_000) { model.state.value.guideSheet != null }
         compose.onNodeWithTag("guide-title").assertTextContains("TF1")
     }

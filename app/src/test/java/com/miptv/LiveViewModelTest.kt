@@ -66,6 +66,33 @@ class LiveViewModelTest {
         assertNull(vm.state.value.selected)
     }
 
+    @Test fun tvTabGoesFromCategoriesToChannelsToPlayerAndBack() {
+        val saved = SavedStateHandle()
+        val vm = loadedModel(saved)
+        vm.openCategory(vm.categoryOf("sintel"))
+        assertEquals(Destination.TV, vm.state.value.destination)
+        assertTrue(vm.state.value.channelsOpen)
+        assertEquals(true, saved.get<Boolean>("channelsOpen"))
+        vm.select(vm.channel("sintel"))
+        vm.closePlayer()
+        assertNull(vm.state.value.selected)
+        assertTrue(vm.state.value.channelsOpen)
+        vm.select(vm.channel("sintel"))
+        vm.closeCategory()
+        assertNull(vm.state.value.selected)
+        assertFalse(vm.state.value.channelsOpen)
+        vm.openCategory("missing")
+        assertFalse(vm.state.value.channelsOpen)
+        // A channel opened from elsewhere plays with its category open behind it; the tab bar starts over.
+        vm.navigate(Destination.SEARCH)
+        vm.open(vm.channel("bbb"))
+        assertTrue(vm.state.value.channelsOpen)
+        assertEquals("bbb", vm.state.value.selected?.tvgId)
+        vm.navigate(Destination.TV)
+        assertFalse(vm.state.value.channelsOpen)
+        assertEquals(false, saved.get<Boolean>("channelsOpen"))
+    }
+
     @Test fun searchIsTrimmedCaseInsensitiveAndHandlesNoMatch() {
         val vm = loadedModel()
         vm.search("  SINTEL ")

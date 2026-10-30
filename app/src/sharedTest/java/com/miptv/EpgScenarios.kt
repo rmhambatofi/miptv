@@ -176,6 +176,35 @@ object EpgScenarios {
         assertEquals(0, repository.countProgrammes("nouveau", GuideFixtures.NOW).first())
     }
 
+    /** A guide listing a channel's evening twice keeps one copy; a programme running a few minutes over is cut. */
+    suspend fun overlappingGuideKeepsOneTimeline(repository: ChannelRepository, loader: GuideLoader) {
+        loader[GuideFixtures.PLAYLIST_URL] = GuideFixtures.PLAYLIST
+        loader[GuideFixtures.GUIDE_URL] = GuideFixtures.GUIDE_OVERLAPS
+        val source = (repository.addSource("France", GuideFixtures.PLAYLIST_URL, SourceKind.URL) as ImportResult.Success).source
+        assertEquals(5, source.programmeCount)
+        val tf1 = repository.channelNamed("TF1")
+        val m6 = repository.channelNamed("M6")
+        val evening = repository.programmes(tf1.id, GuideFixtures.DAY_START, GuideFixtures.NEXT_DAY).first()
+        assertEquals(listOf("Journal de 20h", "Météo", "Film : Le Voyage"), evening.map { it.title })
+        assertEquals(listOf(GuideFixtures.H20_00, GuideFixtures.H20_35, GuideFixtures.H20_40), evening.map { it.startMs })
+        // At 21:15 the late copy of the journal would be on air too: only the film is.
+        assertEquals("Film : Le Voyage", repository.nowAndNext(GuideFixtures.H21_00 + 900_000L).first()[tf1.id]!!.now.title)
+        val m6Evening = repository.programmes(m6.id, GuideFixtures.DAY_START, GuideFixtures.NEXT_DAY).first()
+        assertEquals(listOf("Avant", "Capital"), m6Evening.map { it.title })
+        assertEquals(GuideFixtures.NOW, m6Evening[0].stopMs)
+        assertEquals("Capital", repository.nowAndNext(GuideFixtures.NOW).first()[m6.id]!!.now.title)
+    }
+
+    /** A short EPG listing programmes twice keeps one copy of each. */
+    suspend fun overlappingShortEpgKeepsOneTimeline(repository: ChannelRepository, xtream: FakeXtreamClient) {
+        xtream.shortEpgJson = XtreamFixtures.SHORT_EPG_SHIFTED
+        repository.addXtreamSource("Fournisseur", XtreamAccount("http://portal.example:8080", "u-test", "p-test"))
+        assertTrue(repository.ensureShortEpg("xtream:1:101"))
+        val evening = repository.programmes("xtream:1:101", GuideFixtures.DAY_START, GuideFixtures.NEXT_DAY).first()
+        assertEquals(listOf("Journal de 20h", "Météo", "Film : Le Voyage"), evening.map { it.title })
+        assertEquals("Film : Le Voyage", repository.nowAndNext(GuideFixtures.H21_00 + 900_000L).first()["xtream:1:101"]!!.now.title)
+    }
+
     /** Programmes finished for more than twelve hours go; the running and coming ones stay. */
     suspend fun purgeDropsFinishedProgrammes(repository: ChannelRepository, loader: GuideLoader, clock: TestClock) {
         playlistGuideIsImportedAndJoined(repository, loader)

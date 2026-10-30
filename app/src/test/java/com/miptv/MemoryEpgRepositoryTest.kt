@@ -14,5 +14,7 @@ class MemoryEpgRepositoryTest {
     @Test fun guideErrorsKeepThePreviousProgrammes() = runBlocking { EpgScenarios.guideErrorsKeepThePreviousProgrammes(repository, loader) }
     @Test fun refreshingThePlaylistReimportsTheGuide() = runBlocking { EpgScenarios.refreshingThePlaylistReimportsTheGuide(repository, loader) }
     @Test fun xtreamGuideFollowsFavouritesAndShortEpgFillsTheRest() = runBlocking { EpgScenarios.xtreamGuideFollowsFavouritesAndShortEpgFillsTheRest(repository, loader, xtream) }
+    @Test fun overlappingGuideKeepsOneTimeline() = runBlocking { EpgScenarios.overlappingGuideKeepsOneTimeline(repository, loader) }
+    @Test fun overlappingShortEpgKeepsOneTimeline() = runBlocking { EpgScenarios.overlappingShortEpgKeepsOneTimeline(repository, xtream) }
     @Test fun purgeDropsFinishedProgrammes() = runBlocking { EpgScenarios.purgeDropsFinishedProgrammes(repository, loader, clock) }
 }

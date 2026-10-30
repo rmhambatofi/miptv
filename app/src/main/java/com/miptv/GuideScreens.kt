@@ -5,10 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** Callbacks of the programme guide: the channel sheet, the home row, the search group and the source cards. */
 class GuideActions(
@@ -35,13 +32,15 @@ class GuideActions(
     val tick: () -> Unit
 )
 
-/** « Journal de 20h », a thin progress bar, « Ensuite · 20:35 Météo »: under a channel name wherever a programme is known. */
+/** « Journal de 20h », then a short progress bar and « À suivre 20:35 · Météo »: under a channel name wherever a programme is known. */
 @Composable
-fun NowLine(nowNext: NowNext, nowMs: Long, modifier: Modifier = Modifier, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
-    Column(modifier.testTag("now-line"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(nowNext.now.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        LinearProgressIndicator(progress = { nowNext.now.progress(nowMs) }, modifier = Modifier.fillMaxWidth().height(3.dp), trackColor = tint.copy(alpha = 0.25f))
-        nextLabel(nowNext)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+fun NowLine(nowNext: NowNext, nowMs: Long, modifier: Modifier = Modifier, tint: Color = Palette.Muted) {
+    Column(modifier.testTag("now-line"), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(nowNext.now.title, fontSize = 13.sp, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ProgressLine(nowNext.now.progress(nowMs), Modifier.width(72.dp))
+            nextLabel(nowNext)?.let { Text(it, fontSize = 12.sp, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
     }
 }
 
@@ -49,7 +48,7 @@ fun NowLine(nowNext: NowNext, nowMs: Long, modifier: Modifier = Modifier, tint: 
 @Composable
 fun GuideButton(channel: Channel, modifier: Modifier = Modifier, onOpen: (Channel) -> Unit) {
     IconButton(onClick = { onOpen(channel) }, modifier = modifier) {
-        Icon(Icons.Default.DateRange, contentDescription = "Guide des programmes", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(MiptvIcons.Calendar, contentDescription = "Guide des programmes", tint = Palette.Muted, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -64,7 +63,7 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
     val channel = sheet.channel
     item {
         Row(Modifier.fillMaxWidth().testTag("guide-sheet"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = actions.close, modifier = Modifier.testTag("close-guide")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour") }
+            IconButton(onClick = actions.close, modifier = Modifier.testTag("close-guide")) { Icon(MiptvIcons.Back, contentDescription = "Retour") }
             ChannelLogo(channel)
             Column(Modifier.weight(1f)) {
                 Text(channel.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2, modifier = Modifier.testTag("guide-title"))
@@ -74,10 +73,9 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
         }
     }
     item {
-        if (playback != null && state.selected?.id == channel.id) Preview(playback, state.isFavorite(channel), fullscreen, state.nowNext[channel.id], state.nowMs) { toggleFavorite(channel) }
-        else Button(onClick = { actions.play(channel) }, modifier = Modifier.testTag("guide-play")) {
-            Icon(Icons.Default.PlayArrow, contentDescription = null); Spacer(Modifier.width(6.dp)); Text("Lire")
-        }
+        if (playback != null && state.selected?.id == channel.id) {
+            Preview(playback, state.isFavorite(channel), fullscreen, state.nowNext[channel.id], state.nowMs, channel = channel, subtitle = state.categoryNames[channel.categoryId]) { toggleFavorite(channel) }
+        } else PillButton("Lire", { actions.play(channel) }, Modifier.testTag("guide-play"), icon = MiptvIcons.Play)
     }
     item {
         LazyRow(modifier = Modifier.testTag("guide-days"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -112,7 +110,7 @@ private fun ProgrammeRow(programme: Programme, nowMs: Long) {
     Card(
         onClick = { if (programme.description != null) expanded = !expanded },
         modifier = Modifier.fillMaxWidth().testTag("programme-${programme.startMs}"),
-        colors = CardDefaults.cardColors(containerColor = if (live) Color(0xFF3B2534) else MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = if (live) Palette.AccentSoft else Palette.Panel)
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
@@ -124,31 +122,8 @@ private fun ProgrammeRow(programme: Programme, nowMs: Long) {
                     }
                 }
             }
-            if (live) LinearProgressIndicator(progress = { programme.progress(nowMs) }, modifier = Modifier.fillMaxWidth().height(3.dp))
+            if (live) ProgressLine(programme.progress(nowMs), Modifier.fillMaxWidth())
             programme.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("programme-description")) }
-        }
-    }
-}
-
-/** Accueil: favourite channels with a programme on air. Tap plays; the small button opens the guide. */
-fun LazyListScope.homeNowRow(state: LiveState, actions: GuideActions, onPlay: (Channel) -> Unit) {
-    val onAir = state.onAirFavorites
-    if (onAir.isEmpty()) return
-    item { SectionTitle("En ce moment sur vos favoris") }
-    item {
-        LazyRow(modifier = Modifier.testTag("now-row"), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(onAir, key = { it.first.id }) { (channel, nowNext) ->
-                Card(onClick = { onPlay(channel) }, modifier = Modifier.width(240.dp).testTag("now-${channel.id}")) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ChannelLogo(channel, Modifier.size(36.dp))
-                            Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            GuideButton(channel, Modifier.size(32.dp).testTag("now-guide-${channel.id}"), actions.open)
-                        }
-                        NowLine(nowNext, state.nowMs)
-                    }
-                }
-            }
         }
     }
 }
