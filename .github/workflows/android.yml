@@ -1,7 +1,7 @@
 name: Android phone
 on:
   push:
-    branches: [main, feature/initial-android-phone]
+    branches: [main, feature/initial-android-phone, diag/emulator-offline]
   pull_request:
     branches: [main]
 permissions:
@@ -42,6 +42,10 @@ jobs:
             app/build/reports/lint-results-debug.html
   touch-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -60,6 +64,10 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build the app and test APKs before the emulator starts
         run: ./gradlew assembleDebug assembleDebugAndroidTest
+      - name: Watch host memory and the emulator process every second
+        run: |
+          mkdir -p app/build/reports/androidTests
+          nohup .github/diag/host-watch.sh > app/build/reports/androidTests/host.txt 2>&1 &
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -73,8 +81,20 @@ jobs:
             adb logcat -c
             nohup adb logcat -v threadtime > app/build/reports/androidTests/logcat.txt 2>&1 &
             ./gradlew connectedDebugAndroidTest
+      - name: Why the emulator stopped
+        if: always()
+        run: |
+          D=app/build/reports/androidTests
+          sudo dmesg -T > $D/host-dmesg.txt 2>&1 || true
+          grep -iE "oom|killed process|out of memory|segfault|qemu|trap|general protection|kvm" $D/host-dmesg.txt | tail -40 || true
+          ps aux | grep -i [q]emu || echo "no emulator process left"
+          free -m; nproc; uptime
+          ls -la /tmp/android-runner/ /tmp/android-$USER/ ~/.android/ 2>/dev/null || true
+          find /tmp /home/runner/.android -maxdepth 3 \( -name "*crash*" -o -name "*.dmp" -o -name "core*" \) 2>/dev/null | head -20
+          mkdir -p $D/emu-crash && cp -r /tmp/android-runner/* $D/emu-crash/ 2>/dev/null || true
+          tail -15 $D/host.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-phone-touch-tests
+          name: android-phone-touch-tests-${{ matrix.attempt }}
           path: app/build/reports/androidTests/
