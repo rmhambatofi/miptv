@@ -64,6 +64,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build the app and test APKs before the emulator starts
         run: ./gradlew assembleDebug assembleDebugAndroidTest
+      - name: Install gdb for the freeze snapshot
+        run: sudo apt-get install -y -qq gdb > /dev/null
       - name: Watch host memory and the emulator process every second
         run: |
           mkdir -p app/build/reports/androidTests
@@ -80,6 +82,7 @@ jobs:
             mkdir -p app/build/reports/androidTests
             adb logcat -c
             nohup adb logcat -v threadtime > app/build/reports/androidTests/logcat.txt 2>&1 &
+            nohup .github/diag/freeze-watch.sh app/build/reports/androidTests/freeze.txt > /dev/null 2>&1 &
             ./gradlew connectedDebugAndroidTest
       - name: Why the emulator stopped
         if: always()
@@ -93,6 +96,8 @@ jobs:
           find /tmp /home/runner/.android -maxdepth 3 \( -name "*crash*" -o -name "*.dmp" -o -name "core*" \) 2>/dev/null | head -20
           mkdir -p $D/emu-crash && cp -r /tmp/android-runner/* $D/emu-crash/ 2>/dev/null || true
           tail -15 $D/host.txt
+          sleep 20
+          head -60 $D/freeze.txt 2>/dev/null || echo "no freeze snapshot"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -100,21 +100,35 @@ class GuidePhoneTest {
     }
 
     @Test fun favouritesGetAHomeRow() {
+        fun step(n: String) = android.util.Log.i("DIAG", "favouritesGetAHomeRow: $n")
+        step("launch")
         val model = launch()
         val tf1 = channel("TF1")
+        step("launched")
         compose.onNodeWithTag("now-row").assertDoesNotExist()
         compose.onNodeWithTag("nav-TV").performClick()
+        step("tv")
         compose.onNodeWithTag("category-all").performClick()
+        step("category")
         scrollTo("favorite-${tf1.id}")
+        step("scrolled to star")
         compose.onNodeWithTag("favorite-${tf1.id}").performClick()
+        step("starred")
         compose.waitUntil(5_000) { model.state.value.onAirFavorites.size == 1 }
+        step("favourite on air")
         compose.onNodeWithTag("nav-HOME").performClick()
+        step("home")
         scrollTo("now-row")
+        step("scrolled to now-row")
         compose.onNodeWithTag("now-${tf1.id}", useUnmergedTree = true).assert(hasAnyDescendant(hasText("Journal de 20h")))
+        step("now-row checked")
         // A long press on a favourite opens its guide; a tap plays it.
         compose.onNodeWithTag("now-${tf1.id}").performTouchInput { longClick() }
+        step("long press")
         compose.waitUntil(5_000) { model.state.value.guideSheet != null }
+        step("guide open")
         compose.onNodeWithTag("guide-title").assertTextContains("TF1")
+        step("done")
     }
 
     @Test fun programmeSearchOpensTheGuideOnTheHit() {
