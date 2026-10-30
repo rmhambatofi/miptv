@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class Destination(val label: String) { HOME("Accueil"), TV("TV"), MOVIES("Films"), SERIES("Séries"), SEARCH("Recherche") }
 
@@ -373,10 +377,33 @@ class LiveViewModel(
 
     fun toggleFavorite(channel: Channel) = toggleFavorite(channel.id)
 
-    /** Channels, films and series share the favourites table. */
+    /** Channels, films and series share the favourites table. A provider's channel added reloads its source's guide. */
     fun toggleFavorite(id: String) {
         val favorite = mutable.value.isFavorite(id)
-        viewModelScope.launch { repository.setFavorite(id, !favorite) }
+        viewModelScope.launch {
+            repository.setFavorite(id, !favorite)
+            if (favorite) return@launch
+            val channel = repository.channel(id) ?: return@launch
+            val xtream = mutable.value.sources.any { it.id == channel.sourceId && it.kind == SourceKind.XTREAM }
+            if (xtream && !channel.tvgId.isNullOrBlank()) reloadGuideSoon(channel.sourceId)
+        }
+    }
+
+    /** Guide reloads waiting for more favourites, by source; removed once the download starts. */
+    private val guideReloads = HashMap<Long, Job>()
+
+    /**
+     * The provider's guide follows its favourites: reload it [GUIDE_RELOAD_DELAY_MS] after the last star, so several
+     * stars in a row cost one download. The download itself is never cancelled (it would leave an error on the source);
+     * its outcome shows on the source card.
+     */
+    private fun reloadGuideSoon(sourceId: Long) {
+        guideReloads.remove(sourceId)?.cancel()
+        guideReloads[sourceId] = viewModelScope.launch {
+            delay(GUIDE_RELOAD_DELAY_MS)
+            guideReloads.remove(sourceId)
+            withContext(NonCancellable) { repository.refreshEpg(sourceId) }
+        }
     }
 
     fun fullscreen(on: Boolean) {
@@ -634,6 +661,7 @@ class LiveViewModel(
     private companion object {
         const val RECENT = 10
         const val DAY_MS = 24 * 3_600_000L
+        const val GUIDE_RELOAD_DELAY_MS = 3_000L
     }
 }
 

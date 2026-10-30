@@ -19,7 +19,7 @@ Mêmes règles qu'aux sprints précédents : smartphone uniquement (API 26+), au
 
 ## Lot 1 — Guide chargé à l'ajout d'un favori Xtream
 
-- **ViewModel** : `toggleFavorite` d'une chaîne Xtream ajoutée aux favoris planifie `refreshEpg` de sa source, avec attente de 3 s regroupant les ajouts suivants ; un message discret « Guide de « POP » mis à jour » à la fin, rien en cas d'échec hors `epgError` sur la fiche source.
+- **ViewModel** : `toggleFavorite` d'une chaîne Xtream ajoutée aux favoris planifie `refreshEpg` de sa source, avec attente de 3 s regroupant les ajouts suivants  ; aucun message hors de Sources : le résultat (nombre de programmes ou `epgError`) s'affiche sur la fiche source.
 - **Tests** : `GuideViewModelTest` (un ajout, trois ajouts rapprochés → un seul import, retrait sans import, chaîne M3U sans import).
 
 ## Lot 2 — Actualisation quotidienne
