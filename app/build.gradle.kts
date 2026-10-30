@@ -16,7 +16,7 @@ android {
         versionName = "0.5.0"
         testInstrumentationRunner = "com.miptv.MiptvTestRunner"
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     testOptions.unitTests.isReturnDefaultValues = true
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

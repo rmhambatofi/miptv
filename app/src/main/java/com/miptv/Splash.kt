@@ -33,7 +33,9 @@ import kotlin.math.sin
 /** How long the opening screen stays before Accueil. */
 const val SPLASH_MS = 2_000L
 
-/** Opening screen: the logo, a small equaliser, the tagline and a loading line, with the opening sound. */
+const val AUTHOR = "Manitra Randrianasolo"
+
+/** Opening screen: the logo, a small equaliser, the tagline, a loading line and the version with its author, with the opening sound. */
 @Composable
 fun Splash(onDone: () -> Unit) {
     val progress = remember { Animatable(0f) }
@@ -64,7 +66,14 @@ fun Splash(onDone: () -> Unit) {
             }
             Text("Votre cinéma de poche", color = Palette.Muted, fontSize = 14.sp, letterSpacing = 1.sp)
         }
-        ProgressLine(progress.value, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp).width(120.dp))
+        Column(
+            Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ProgressLine(progress.value, Modifier.padding(bottom = 24.dp).width(120.dp))
+            Text("Version ${BuildConfig.VERSION_NAME}", color = Palette.Muted, fontSize = 12.sp, letterSpacing = 0.5.sp, modifier = Modifier.testTag("splash-version"))
+            Text("par $AUTHOR", color = Palette.Dim, fontSize = 12.sp, modifier = Modifier.testTag("splash-author"))
+        }
     }
 }
 
