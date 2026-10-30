@@ -61,13 +61,24 @@ private const val COLUMNS = 3
 
 private val Gutter = Modifier.padding(horizontal = 16.dp)
 
+/** The player when it plays this sheet's film. */
+private fun MovieSheet.playing(playback: Playback?): Playback? = playback?.takeIf { it.item.id == movie.id }
+
+/** The player when it plays one of this sheet's episodes. */
+private fun SeriesSheet.playing(playback: Playback?): Playback? = playback?.takeIf { p -> info?.episodes?.any { it.id == p.item.id } == true }
+
 // --- Films ---
 
 @Composable
-fun ColumnScope.MoviesScreen(state: LiveState, movies: LazyPagingItems<Movie>, playback: Playback?, actions: VodActions, listState: LazyListState) {
+fun ColumnScope.MoviesScreen(
+    state: LiveState, movies: LazyPagingItems<Movie>, playback: Playback?, actions: VodActions, listState: LazyListState,
+    sideways: Boolean = false, onPlayerTap: (Boolean) -> Unit = {}
+) {
     val sheet = state.movieSheet
     if (sheet != null && !(state.ready && !state.hasXtream)) {
-        ContentList(listState) { movieSheet(state, sheet, playback, actions) }
+        val playing = sheet.playing(playback)
+        if (sideways && playing != null) SidewaysVodPlayer(playing, actions.fullscreen, actions.stop, onNext = null, onPlayerTap, Modifier.fillMaxWidth().weight(1f))
+        else ContentList(listState) { movieSheet(state, sheet, playback, actions) }
         return
     }
     CatalogueScreen(
@@ -99,7 +110,7 @@ fun ColumnScope.MoviesScreen(state: LiveState, movies: LazyPagingItems<Movie>, p
 
 private fun LazyListScope.movieSheet(state: LiveState, sheet: MovieSheet, playback: Playback?, actions: VodActions) {
     val movie = sheet.movie
-    val playing = playback?.takeIf { it.item.id == movie.id }
+    val playing = sheet.playing(playback)
     val resume = state.resumable(movie.id)
     val meta = listOfNotNull(state.categoryNames[movie.categoryId]?.let { splitZone(it).second }, movie.movieSubtitle()).joinToString(" · ")
     if (playing != null) {
@@ -131,10 +142,16 @@ private fun LazyListScope.movieSheet(state: LiveState, sheet: MovieSheet, playba
 // --- Séries ---
 
 @Composable
-fun ColumnScope.SeriesScreen(state: LiveState, series: LazyPagingItems<Series>, playback: Playback?, actions: VodActions, nextEpisode: Episode?, listState: LazyListState) {
+fun ColumnScope.SeriesScreen(
+    state: LiveState, series: LazyPagingItems<Series>, playback: Playback?, actions: VodActions, nextEpisode: Episode?, listState: LazyListState,
+    sideways: Boolean = false, onPlayerTap: (Boolean) -> Unit = {}
+) {
     val sheet = state.seriesSheet
     if (sheet != null && !(state.ready && !state.hasXtream)) {
-        ContentList(listState) { seriesSheet(state, sheet, playback, actions, nextEpisode) }
+        val playing = sheet.playing(playback)
+        if (sideways && playing != null) {
+            SidewaysVodPlayer(playing, actions.fullscreen, actions.stop, onNext = if (nextEpisode != null) actions.playNext else null, onPlayerTap, Modifier.fillMaxWidth().weight(1f))
+        } else ContentList(listState) { seriesSheet(state, sheet, playback, actions, nextEpisode) }
         return
     }
     CatalogueScreen(
@@ -167,7 +184,7 @@ fun ColumnScope.SeriesScreen(state: LiveState, series: LazyPagingItems<Series>, 
 private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, playback: Playback?, actions: VodActions, nextEpisode: Episode?) {
     val series = sheet.series
     val info = sheet.info
-    val playing = playback?.takeIf { p -> info?.episodes?.any { it.id == p.item.id } == true }
+    val playing = sheet.playing(playback)
     val meta = listOfNotNull(
         state.categoryNames[series.categoryId]?.let { splitZone(it).second }, series.year?.toString(),
         info?.seasons?.size?.takeIf { it > 0 }?.let { if (it > 1) "$it saisons" else "1 saison" },

@@ -1,6 +1,9 @@
 package com.miptv
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.view.MotionEvent
+import android.view.View
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -254,16 +257,32 @@ private const val DEFAULT_USER_AGENT = "miptv/0.4 (Android; Media3)"
 /**
  * Media3 view bound to the hoisted player. With [controller] the Media3 controls (time bar, ±10 s, fullscreen
  * button toggling [onFullscreen]) drive a film or episode; live channels draw their own controls over it.
+ * [onControls] follows the controller as it shows and hides; [onTap] receives whether a touch on the picture
+ * (not on a control) is showing it, so a timeout hiding it is told apart from the viewer.
  */
+@SuppressLint("ClickableViewAccessibility")
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerSurface(playback: Playback, fullscreen: Boolean, onFullscreen: (Boolean) -> Unit, modifier: Modifier = Modifier, controller: Boolean = true) {
+fun PlayerSurface(
+    playback: Playback, fullscreen: Boolean, onFullscreen: (Boolean) -> Unit, modifier: Modifier = Modifier, controller: Boolean = true,
+    onControls: (Boolean) -> Unit = {}, onTap: (Boolean) -> Unit = {}
+) {
+    val controls = rememberUpdatedState(onControls)
+    val tap = rememberUpdatedState(onTap)
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
                 useController = controller
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                if (controller) setFullscreenButtonClickListener { onFullscreen(it) }
+                if (controller) {
+                    setFullscreenButtonClickListener { onFullscreen(it) }
+                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { controls.value(it == View.VISIBLE) })
+                    // Seen before the view toggles its controller on the release; touches on the controls never reach it.
+                    setOnTouchListener { view, event ->
+                        if (event.actionMasked == MotionEvent.ACTION_UP) tap.value(!(view as PlayerView).isControllerFullyVisible)
+                        false
+                    }
+                }
             }
         },
         update = { view ->
@@ -393,6 +412,38 @@ fun VodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClose: () -
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (playback.failed) PillButton("Réessayer", playback::retry, Modifier.testTag("retry"), height = 40.dp)
                 if (onNext != null) PillButton("Épisode suivant", onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, primary = playback.ended, height = 40.dp)
+            }
+        }
+    }
+}
+
+/**
+ * A film or episode with the phone turned sideways: the picture fills the tab above the tab bar, as the TV player
+ * does. The Media3 controller drives it; the title and the close button come and go with it, and [onTap]
+ * receives whether a touch showed it. Errors and the next episode show in the middle, as in fullscreen.
+ */
+@Composable
+fun SidewaysVodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClose: () -> Unit, onNext: (() -> Unit)?, onTap: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    var controls by remember(playback) { mutableStateOf(true) }
+    Box(modifier.background(Color.Black).testTag("vod-player")) {
+        PlayerSurface(playback, fullscreen = false, onFullscreen = onFullscreen, modifier = Modifier.fillMaxSize(), onControls = { controls = it }, onTap = onTap)
+        AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+            Row(
+                Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent))).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(playback.item.title, color = Palette.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    playback.item.subtitle?.let { Text(it, color = Palette.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                }
+                OverlayButton(MiptvIcons.Close, "Fermer le lecteur", onClose, Modifier.testTag("close-player"))
+            }
+        }
+        if (playback.failed || (playback.ended && onNext != null)) {
+            Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(playback.status, color = Color.White, modifier = Modifier.testTag("player-status"))
+                if (playback.failed) PillButton("Réessayer", playback::retry, Modifier.testTag("retry"), height = 40.dp)
+                if (playback.ended && onNext != null) PillButton("Épisode suivant", onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, height = 40.dp)
             }
         }
     }

@@ -219,12 +219,14 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
     // Back never stops the channel: the player gives way to the list it covered, the channels to the categories.
     val playerShown = inTv && state.playerOpen && state.selected != null
     BackHandler(playerShown) { actions.minimizePlayer() }
-    // Turned sideways, the player fills the screen above the tab bar: a touch on the picture lowers the bar with
-    // the controls, the next one raises it again. Upright or away from the player, the bar is always there.
+    // Turned sideways, the player of a channel, a film or an episode fills the screen above the tab bar: a touch on
+    // the picture lowers the bar with the controls, the next one raises it again. Upright or away from a player,
+    // the bar is always there; a new channel or episode brings it back with its controls.
     val sideways = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val vodShown = sheetOpen && state.vod != null && (state.destination == Destination.MOVIES || state.destination == Destination.SERIES)
     var barLowered by rememberSaveable { mutableStateOf(false) }
-    val tapToLower = sideways && playerShown
-    LaunchedEffect(tapToLower) { if (!tapToLower) barLowered = false }
+    val tapToLower = sideways && (playerShown || vodShown)
+    LaunchedEffect(tapToLower, state.playItem?.id) { barLowered = false }
     BackHandler(inTv && !playerShown && state.channelsOpen) { actions.closeCategory() }
     BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && !(inTv && (playerShown || state.channelsOpen)) && state.destination != Destination.HOME) {
         actions.navigate(Destination.HOME)
@@ -256,8 +258,8 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                 }
                 state.destination == Destination.HOME -> ContentList(scrollState, spacing = 22.dp) { homeSection(state, pages.home, actions) }
                 state.destination == Destination.TV -> TvScreen(state, pages.tv, playback?.takeIf { state.selected != null }, actions, scrollState) { controls -> barLowered = !controls }
-                state.destination == Destination.MOVIES -> MoviesScreen(state, pages.movies, playback, actions.vod, scrollState)
-                state.destination == Destination.SERIES -> SeriesScreen(state, pages.series, playback, actions.vod, nextEpisode, scrollState)
+                state.destination == Destination.MOVIES -> MoviesScreen(state, pages.movies, playback, actions.vod, scrollState, sideways) { controls -> barLowered = !controls }
+                state.destination == Destination.SERIES -> SeriesScreen(state, pages.series, playback, actions.vod, nextEpisode, scrollState, sideways) { controls -> barLowered = !controls }
                 else -> {
                     AppHeader("Recherche", state.sourcesOpen, actions.openSources)
                     ContentList(scrollState, padded = true) { searchSection(state, pages, actions) }
