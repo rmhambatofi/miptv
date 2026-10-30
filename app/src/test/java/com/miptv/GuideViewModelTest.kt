@@ -195,6 +195,57 @@ class GuideViewModelTest {
         assertEquals("Journal de 20h", vm.state.value.nowNext["xtream:1:102"]!!.now.title)
     }
 
+    @Test fun addingAProviderChannelToTheFavouritesReloadsItsGuideOnce() {
+        val account = XtreamAccount("http://portal.example:8080", "u-test", "p-test")
+        loader[account.xmltvUrl()] = GuideFixtures.GUIDE
+        runBlocking { repository.addXtreamSource("Fournisseur", account) }
+        runBlocking { repository.addSource("France", GuideFixtures.PLAYLIST_URL, SourceKind.URL) }
+        val vm = model()
+        fun step(ms: Long) { dispatcher.dispatcher.scheduler.advanceTimeBy(ms); dispatcher.dispatcher.scheduler.runCurrent() }
+
+        // No guide key: nothing to download for it.
+        vm.toggleFavorite(runBlocking { repository.channel("xtream:1:102")!! })
+        dispatcher.idle()
+        assertNull(loader.opened[account.xmltvUrl()])
+
+        // Star, unstar, star again within the delay: one download, 3 s after the last star.
+        val tf1 = runBlocking { repository.channel("xtream:1:101")!! }
+        vm.toggleFavorite(tf1); step(1_000)
+        vm.toggleFavorite(tf1); step(1_000)
+        vm.toggleFavorite(tf1); step(2_900)
+        assertNull(loader.opened[account.xmltvUrl()])
+        step(200)
+        dispatcher.idle()
+        assertEquals(1, loader.opened[account.xmltvUrl()])
+        assertEquals(4, vm.state.value.sources.first { it.kind == SourceKind.XTREAM }.programmeCount)
+        assertEquals("Journal de 20h", vm.state.value.nowNext[tf1.id]!!.now.title)
+        assertNull(vm.state.value.importStatus.message) // silent: the source card shows the outcome
+
+        // Unstarring and starring a playlist channel download nothing more.
+        vm.toggleFavorite(tf1)
+        vm.toggleFavorite(channel("TF1"))
+        dispatcher.idle()
+        assertEquals(1, loader.opened[account.xmltvUrl()])
+        assertEquals(1, loader.opened[GuideFixtures.GUIDE_URL])
+    }
+
+    @Test fun theGuideSheetKnowsWhereTheChannelGuideStops() {
+        val vm = loaded()
+        val tf1 = channel("TF1")
+        vm.openGuide(tf1)
+        dispatcher.idle()
+        assertEquals(GuideFixtures.H00_10_NEXT, vm.state.value.guideSheet!!.guideEndMs)
+        vm.guideDay(vm.state.value.guideDays[2])
+        dispatcher.idle()
+        assertEquals(GuideFixtures.H00_10_NEXT, vm.state.value.guideSheet!!.guideEndMs)
+        assertTrue(vm.state.value.guideSheet!!.programmes.isEmpty())
+        vm.openGuide(tf1) // same channel again: the end stays known
+        assertEquals(GuideFixtures.H00_10_NEXT, vm.state.value.guideSheet!!.guideEndMs)
+        vm.openGuide(channel("Chaîne locale"))
+        dispatcher.idle()
+        assertNull(vm.state.value.guideSheet!!.guideEndMs)
+    }
+
     @Test fun guideFormattingInParisTime() {
         val paris = ZoneId.of("Europe/Paris")
         assertEquals("20:35", formatTime(GuideFixtures.H20_35, paris))

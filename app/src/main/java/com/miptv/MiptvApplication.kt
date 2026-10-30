@@ -12,5 +12,6 @@ class MiptvApplication : Application() {
         super.onCreate()
         val database = Room.databaseBuilder(this, MiptvDatabase::class.java, "miptv.db").addMigrations(*MIGRATIONS).build()
         repository = RoomChannelRepository(database, AndroidPlaylistLoader(this), HttpXtreamClient(), KeystoreSecretCipher())
+        GuideRefreshWorker.schedule(this)
     }
 }

@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class Destination(val label: String) { HOME("Accueil"), TV("TV"), MOVIES("Films"), SERIES("Séries"), SEARCH("Recherche") }
 
@@ -50,7 +54,8 @@ data class SeriesSheet(val series: Series, val info: SeriesInfo? = null, val sea
 
 /** A film or episode with a resume position, for the home row. */
 /** The guide of one channel for one local day; [focusMs] is the programme to scroll to (the one on air, or a search hit). */
-data class GuideSheet(val channel: Channel, val dayStartMs: Long, val programmes: List<Programme> = emptyList(), val loading: Boolean = true, val focusMs: Long? = null)
+/** [guideEndMs]: end of the channel's last known programme, null without any; days from there on are empty. */
+data class GuideSheet(val channel: Channel, val dayStartMs: Long, val programmes: List<Programme> = emptyList(), val loading: Boolean = true, val focusMs: Long? = null, val guideEndMs: Long? = null)
 
 data class ResumeItem(val item: PlayItem, val posterUrl: String?, val progress: PlaybackProgress, val movieId: String? = null, val seriesId: String? = null)
 
@@ -198,6 +203,17 @@ class LiveViewModel(
                         val sheet = state.guideSheet
                         if (sheet == null || sheet.channel.id != loaded.first.first || sheet.dayStartMs != loaded.first.second) state
                         else state.copy(guideSheet = sheet.copy(programmes = loaded.second, loading = false))
+                    }
+                }
+        }
+        viewModelScope.launch {
+            mutable.map { it.guideSheet?.channel?.id }.distinctUntilChanged()
+                .flatMapLatest { id -> if (id == null) flowOf(null) else repository.guideEnd(id).map { id to it } }
+                .collect { end ->
+                    if (end == null) return@collect
+                    mutable.update { state ->
+                        val sheet = state.guideSheet
+                        if (sheet == null || sheet.channel.id != end.first) state else state.copy(guideSheet = sheet.copy(guideEndMs = end.second))
                     }
                 }
         }
@@ -373,10 +389,33 @@ class LiveViewModel(
 
     fun toggleFavorite(channel: Channel) = toggleFavorite(channel.id)
 
-    /** Channels, films and series share the favourites table. */
+    /** Channels, films and series share the favourites table. A provider's channel added reloads its source's guide. */
     fun toggleFavorite(id: String) {
         val favorite = mutable.value.isFavorite(id)
-        viewModelScope.launch { repository.setFavorite(id, !favorite) }
+        viewModelScope.launch {
+            repository.setFavorite(id, !favorite)
+            if (favorite) return@launch
+            val channel = repository.channel(id) ?: return@launch
+            val xtream = mutable.value.sources.any { it.id == channel.sourceId && it.kind == SourceKind.XTREAM }
+            if (xtream && !channel.tvgId.isNullOrBlank()) reloadGuideSoon(channel.sourceId)
+        }
+    }
+
+    /** Guide reloads waiting for more favourites, by source; removed once the download starts. */
+    private val guideReloads = HashMap<Long, Job>()
+
+    /**
+     * The provider's guide follows its favourites: reload it [GUIDE_RELOAD_DELAY_MS] after the last star, so several
+     * stars in a row cost one download. The download itself is never cancelled (it would leave an error on the source);
+     * its outcome shows on the source card.
+     */
+    private fun reloadGuideSoon(sourceId: Long) {
+        guideReloads.remove(sourceId)?.cancel()
+        guideReloads[sourceId] = viewModelScope.launch {
+            delay(GUIDE_RELOAD_DELAY_MS)
+            guideReloads.remove(sourceId)
+            withContext(NonCancellable) { repository.refreshEpg(sourceId) }
+        }
     }
 
     fun fullscreen(on: Boolean) {
@@ -401,14 +440,17 @@ class LiveViewModel(
     /** Opens the guide of a channel on today, focused on what is on air; Xtream channels fetch their short EPG. */
     fun openGuide(channel: Channel) {
         val now = clock()
-        mutable.update { it.copy(nowMs = now, guideSheet = GuideSheet(channel, dayStart(now), focusMs = it.nowNext[channel.id]?.now?.startMs)) }
+        mutable.update { it.copy(nowMs = now, guideSheet = GuideSheet(channel, dayStart(now), focusMs = it.nowNext[channel.id]?.now?.startMs, guideEndMs = it.guideEndOf(channel))) }
         viewModelScope.launch { repository.ensureShortEpg(channel.id) }
     }
 
     /** From a search hit: the guide of the channel on the programme's day, scrolled to it. */
     fun openGuide(hit: ProgrammeHit) {
-        mutable.update { it.copy(nowMs = clock(), guideSheet = GuideSheet(hit.channel, dayStart(hit.programme.startMs), focusMs = hit.programme.startMs)) }
+        mutable.update { it.copy(nowMs = clock(), guideSheet = GuideSheet(hit.channel, dayStart(hit.programme.startMs), focusMs = hit.programme.startMs, guideEndMs = it.guideEndOf(hit.channel))) }
     }
+
+    /** Reopening the sheet of the same channel keeps its known end: the flow does not emit again for an unchanged channel. */
+    private fun LiveState.guideEndOf(channel: Channel): Long? = guideSheet?.takeIf { it.channel.id == channel.id }?.guideEndMs
 
     fun guideDay(dayStartMs: Long) {
         mutable.update { state ->
@@ -634,6 +676,7 @@ class LiveViewModel(
     private companion object {
         const val RECENT = 10
         const val DAY_MS = 24 * 3_600_000L
+        const val GUIDE_RELOAD_DELAY_MS = 3_000L
     }
 }
 

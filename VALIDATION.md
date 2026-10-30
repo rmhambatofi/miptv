@@ -1,5 +1,36 @@
 # Validation — smartphone
 
+## Sprint 5 — synthèse (30 octobre 2026)
+
+Branche `feature/sprint5-guide` depuis `feature/sprint4-epg` (PR #13 ouverte), un commit par lot ; chaque commit compile et passe `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`, puis `connectedDebugAndroidTest` sur l'émulateur Pixel 2 API 35 x86_64. Plan et bilan dans `SPRINT5.md`.
+
+| Lot | Commit | Contenu | Vérification |
+| --- | --- | --- | --- |
+| 1 — Favori → guide | `b5b393e` | Étoile sur une chaîne Xtream avec clé de guide : `refreshEpg` de sa source 3 s après la dernière étoile, un seul téléchargement, jamais interrompu | 2 tests `GuideViewModelTest` |
+| 2 — Actualisation quotidienne | `425561d` | `refreshStaleGuides`, `GuideRefreshWorker`, travaux `guide-daily` (24 h, seuil 20 h) et `guide-launch` (seuil 24 h) | Scénario partagé `staleGuidesAreReloaded` (JVM et Room) ; travaux vus sur le Xiaomi |
+| 3 — Feuille guide honnête | `5443706` | `guideEnd`, bandeau « Guide limité aux prochaines heures », jours estompés annoncés « Sans programme », message du jour vide ; version 0.5.0 | Scénario `guideEndIsTheLastKnownProgramme`, `GuideViewModelTest`, `GuidePhoneTest` |
+| 4 — Validation et documentation | ce commit | Suite instrumentée complète, Xiaomi 15, README, VALIDATION, bilan de `SPRINT5.md` | Ci-dessous |
+
+État final : **122 tests unitaires** et **41 tests instrumentés** réussis (dont `CatalogPerformanceTest` ignoré sans `-e perf true`), toute la suite instrumentée relancée pour la première fois depuis la refonte UX ; lint **30 avertissements** (28 au Sprint 4, les deux nouveaux signalent des versions de dépendances plus récentes, dont `work-runtime-ktx`), zéro erreur ; schéma Room v4 inchangé.
+
+### Validation sur appareil (Xiaomi 15, HyperOS 3 / Android 16, 30 octobre 2026, 13:55 – 14:08)
+
+APK debug 0.5.0 installé par l'utilisateur depuis Téléchargements (`lastUpdateTime` 13:55:22). Données en place : playlist iptv-org avec son guide XMLTV (1 275 programmes, chargé à 08:01) et le fournisseur Xtream « POP » (guide de 24 programmes chargé à 11:33 pour son seul favori, beIN Sports 1).
+
+| # | Scénario | Résultat |
+| --- | --- | --- |
+| 1 | Travaux planifiés | **OK** : au premier lancement (13:56:51), `guide-launch` et la première période de `guide-daily` s'exécutent (`Worker result SUCCESS`, 0,3 s chacun) ; les deux guides ayant moins de 20 h, rien n'est téléchargé, comme prévu. JobScheduler : `guide-daily` avec réseau non facturé et batterie non faible, `guide-launch` avec réseau non facturé. Après un démarrage à froid, WorkManager réinscrit la période suivante (job 2, en attente du délai de 24 h) |
+| 2 | Bandeau d'une chaîne hors favoris | **OK** : feuille guide de « \|FR\| Gulli ᵁᴴᴰ » (clé `gulli.fr`) : « Guide limité aux prochaines heures… » avec « Ajouter aux favoris » ; 3 programmes d'aujourd'hui seulement (EPG court), puces Demain, dim. 1 nov. et lun. 2 nov. estompées |
+| 3 | Favori → guide sans passer par Sources | **OK** : « Ajouter aux favoris » du bandeau touché à 14:05:50 ; le bandeau disparaît aussitôt ; `epgRefreshedAt` de la source 14:05:53 (attente de 3 s) et la feuille ouverte passe de 3 à 15 programmes aujourd'hui entre 14:06:00 et 14:06:05, sans message. En base : 48 programmes pour les deux favoris (25 beIN Sports 1, 23 Gulli), aucune `epgError` ; les programmes de l'EPG court des autres chaînes sont remplacés par l'import |
+| 4 | Jours estompés et jour vide | **OK** : après l'import, Demain porte 9 programmes et n'est plus estompé ; dim. 1 nov. reste estompé et affiche « Pas encore de programmes pour ce jour : le guide connu s'arrête demain à 15:20. » (le fournisseur publie environ 25 h) |
+| 5 | Purge à 12 h (dette du Sprint 4, scénario 12) | **OK** : à 14:08, le plus ancien programme conservé finit à 02:10, soit 12,0 h plus tôt, dans les deux sources ; les purges des passages de 13:56 et 14:03 ont retiré tout programme fini depuis plus de 12 h |
+| 6 | Erreur de guide (dette du Sprint 4, scénario 8) | **Non rejoué sur l'appareil** : saisir une adresse au clavier par `monkey` aurait remplacé l'adresse du guide de l'utilisateur. Couvert par `EpgScenarios` (hôte injoignable, page HTML, `ftp`) sur les deux dépôts et par `GuideViewModelTest` (messages) |
+
+### Constats
+
+- **HyperOS retire le travail quotidien en arrière-plan.** Démarrage à froid à 14:03:16 : `guide-daily` est réinscrit (job 2, en attente du délai). 40 s après le retour à l'écran d'accueil, JobScheduler ne le connaît plus, alors que WorkManager le tient pour inscrit (`ENQUEUED`, job 2). Sur l'émulateur API 35, le même job reste inscrit. Conséquence : sur ce téléphone, sans « Démarrage automatique » pour miptv, l'actualisation quotidienne n'a lieu qu'au lancement. C'est le rôle de `guide-launch` (guide de plus de 24 h) ; WorkManager réinscrit aussi `guide-daily` à chaque démarrage à froid. Activer le démarrage automatique de miptv dans les réglages HyperOS devrait garder le travail inscrit ; non vérifié.
+- Le guide du fournisseur ne couvre qu'environ 25 h : les jours suivants restent estompés, ce que la feuille dit désormais.
+
 ## Sprint 4 — synthèse (29 octobre 2026)
 
 Branche `feature/sprint4-epg` depuis `main` (après la PR #8), un commit par lot ; chaque commit compile et passe `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest`, puis `connectedDebugAndroidTest` sur l'émulateur Pixel 2 API 35 x86_64 (macOS Intel, JDK 21, SDK 35). La PR #9, ouverte pendant ce sprint, a réparé le fichier de workflow CI, illisible depuis le lot 0.2 du Sprint 3 : aucun run GitHub n'avait vérifié les lots 1 à 4 du Sprint 3.

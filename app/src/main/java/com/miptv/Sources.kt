@@ -399,6 +399,12 @@ class MemoryChannelRepository(
         byKey(channel.sourceId)[key].orEmpty().filter { it.stopMs > fromMs && it.startMs < toMs }
     }
 
+    override fun guideEnd(channelId: String): Flow<Long?> = combine(snapshot, guideVersion) { s, _ ->
+        val channel = s.channels.firstOrNull { it.id == channelId } ?: return@combine null
+        val key = keyOf(channel) ?: return@combine null
+        guides[channel.sourceId].orEmpty().filter { it.channelKey == key }.maxOfOrNull { it.stopMs }
+    }.distinctUntilChanged()
+
     private fun hits(s: Snapshot, text: String, nowMs: Long): List<ProgrammeHit> {
         if (text.isBlank()) return emptyList()
         val needle = searchKey(text)
