@@ -185,7 +185,7 @@ Un programme rejoint une chaîne par la clé `channels.epgKey` : le `tvg-id` qua
 
 ### Actualisation en arrière-plan
 
-WorkManager porte deux travaux autour de `refreshStaleGuides`, tous deux en `KEEP` et sur réseau non facturé : `guide-daily` (périodique, 24 h, batterie non faible, seuil 20 h) et `guide-launch` (une fois à chaque lancement, seuil 24 h, pour les téléphones où le travail périodique est retardé). Le travail relit les sources en base : aucune donnée de source ne transite par ses paramètres. Il finit toujours en `success`, les erreurs restant sur les fiches source.
+WorkManager porte deux travaux autour de `refreshStaleGuides`, tous deux en `KEEP` et sur réseau non facturé : `guide-daily` (périodique, 24 h, batterie non faible, seuil 20 h) et `guide-launch` (une fois à chaque lancement, seuil 24 h, pour les téléphones où le travail périodique est retardé). Le travail relit les sources en base : aucune donnée de source ne transite par ses paramètres. Il finit toujours en `success`, les erreurs restant sur les fiches source. WorkManager est initialisé à la demande par `MiptvApplication` (`Configuration.Provider`, initialiseur automatique retiré du manifeste) : un processus qui ne planifie rien ne le démarre pas.
 
 ### Un seul lecteur
 
@@ -221,7 +221,7 @@ Aucun test ne dépend du réseau. Les réponses Xtream enregistrées et anonymis
 
 Les tests ViewModel utilisent `MemoryChannelRepository` avec un chargeur factice et un `StandardTestDispatcher`, et lisent les listes paginées avec `paging-testing`.
 
-**41 tests instrumentés** (`app/src/androidTest`) :
+**41 tests instrumentés** (`app/src/androidTest`), lancés par `MiptvTestRunner` dans une `Application` neutre : chaque test construit son dépôt, et WorkManager ne démarre pas pendant la suite.
 
 - interface Compose : navigation, sources, lecture et favoris (`PhoneNavigationTest`, 6) ; parcours Xtream (`XtreamPhoneTest`, 4) ; guide (`GuidePhoneTest`, 5) ;
 - Room : catalogue et pagination (`RoomChannelRepositoryTest`, 7), sources Xtream (`XtreamRepositoryTest`, 6), guide (`EpgRepositoryTest`, 9), migrations v1 → v4 (`MigrationTest`, 1) ;
