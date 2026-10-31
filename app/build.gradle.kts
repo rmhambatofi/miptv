@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -23,6 +25,28 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    // One key for the debug APK built in CI and on every computer, so each build updates the installed app
+    // in place. Read from the environment (CI secrets) or from keystore.properties (ignored by git); with
+    // neither, the default debug key of the machine signs as before.
+    val signing = Properties().apply {
+        rootProject.file("keystore.properties").takeIf { it.isFile }?.reader()?.use { load(it) }
+        System.getenv("MIPTV_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }?.let { file ->
+            fun env(name: String) = System.getenv(name)?.takeIf { it.isNotEmpty() } ?: error("$name is missing for MIPTV_KEYSTORE_FILE")
+            setProperty("storeFile", file)
+            setProperty("storePassword", env("MIPTV_KEYSTORE_PASSWORD"))
+            setProperty("keyAlias", env("MIPTV_KEY_ALIAS"))
+            setProperty("keyPassword", env("MIPTV_KEY_PASSWORD"))
+        }
+    }
+    if (signing.getProperty("storeFile") != null) {
+        val miptv = signingConfigs.create("miptv") {
+            storeFile = rootProject.file(signing.getProperty("storeFile"))
+            storePassword = signing.getProperty("storePassword")
+            keyAlias = signing.getProperty("keyAlias")
+            keyPassword = signing.getProperty("keyPassword")
+        }
+        buildTypes.getByName("debug").signingConfig = miptv
+    }
     // Schemas are versioned and packaged for MigrationTestHelper in instrumented tests.
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     // Recorded Xtream responses and the fake client serve both local and instrumented tests.
