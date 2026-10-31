@@ -32,10 +32,13 @@ import androidx.paging.compose.itemKey
 /**
  * The TV tab in three levels: the list of categories, the channels of one category, then the player on top
  * with the categories and their channels under it. Back lowers the player to a mini player over the list it
- * covered; only its close button stops the channel.
+ * covered; only its close button stops the channel. [onPlayerTap] receives whether a touch on the picture showed its controls.
  */
 @Composable
-fun ColumnScope.TvScreen(state: LiveState, channels: LazyPagingItems<Channel>, playback: Playback?, actions: PhoneActions, listState: LazyListState) {
+fun ColumnScope.TvScreen(
+    state: LiveState, channels: LazyPagingItems<Channel>, playback: Playback?, actions: PhoneActions, listState: LazyListState,
+    onPlayerTap: (Boolean) -> Unit = {}
+) {
     // The lists keep their place while the player covers them: back returns to the category or channel left.
     val categoriesList = rememberLazyListState()
     val channelsList = key(state.categoryId) { rememberLazyListState() }
@@ -44,7 +47,7 @@ fun ColumnScope.TvScreen(state: LiveState, channels: LazyPagingItems<Channel>, p
             AppHeader("TV en direct", state.sourcesOpen, actions.openSources)
             ContentList(listState, padded = true) { noSourceItem(actions) }
         }
-        playback != null && state.selected != null && state.playerOpen -> PlayerPage(state, state.selected, channels, playback, actions, listState)
+        playback != null && state.selected != null && state.playerOpen -> PlayerPage(state, state.selected, channels, playback, actions, listState, onPlayerTap)
         else -> {
             Column(Modifier.weight(1f)) {
                 if (state.channelsOpen) ChannelsPage(state, channels, actions, channelsList) else CategoriesPage(state, actions, categoriesList)
@@ -233,11 +236,14 @@ fun ChannelRow(
 // --- Level 3: the player ---
 
 @Composable
-private fun ColumnScope.PlayerPage(state: LiveState, selected: Channel, channels: LazyPagingItems<Channel>, playback: Playback, actions: PhoneActions, listState: LazyListState) {
+private fun ColumnScope.PlayerPage(
+    state: LiveState, selected: Channel, channels: LazyPagingItems<Channel>, playback: Playback, actions: PhoneActions, listState: LazyListState,
+    onTap: (Boolean) -> Unit
+) {
     // The picture stays on top, the rest scrolls under it.
     LivePlayer(
         playback, actions.fullscreen, Modifier.fillMaxWidth().aspectRatio(16f / 9f),
-        onMinimize = actions.minimizePlayer, onGuide = { actions.guide.open(selected) }, onClose = actions.closePlayer
+        onMinimize = actions.minimizePlayer, onGuide = { actions.guide.open(selected) }, onClose = actions.closePlayer, onTap = onTap
     )
     ContentList(listState, spacing = 0.dp) {
         item {

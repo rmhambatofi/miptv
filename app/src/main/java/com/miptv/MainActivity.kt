@@ -2,11 +2,17 @@ package com.miptv
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -212,11 +219,25 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
     // Back never stops the channel: the player gives way to the list it covered, the channels to the categories.
     val playerShown = inTv && state.playerOpen && state.selected != null
     BackHandler(playerShown) { actions.minimizePlayer() }
+    // Turned sideways, the player of a channel, a film or an episode fills the screen above the tab bar: a touch on
+    // the picture lowers the bar with the controls, the next one raises it again. Upright or away from a player,
+    // the bar is always there; a new channel or episode brings it back with its controls.
+    val sideways = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val vodShown = sheetOpen && state.vod != null && (state.destination == Destination.MOVIES || state.destination == Destination.SERIES)
+    var barLowered by rememberSaveable { mutableStateOf(false) }
+    val tapToLower = sideways && (playerShown || vodShown)
+    LaunchedEffect(tapToLower, state.playItem?.id) { barLowered = false }
     BackHandler(inTv && !playerShown && state.channelsOpen) { actions.closeCategory() }
     BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && !(inTv && (playerShown || state.channelsOpen)) && state.destination != Destination.HOME) {
         actions.navigate(Destination.HOME)
     }
-    Scaffold(containerColor = Palette.Ink, bottomBar = { MiptvNavBar(if (state.sourcesOpen) null else state.destination, actions.navigate) }) { padding ->
+    Scaffold(containerColor = Palette.Ink, bottomBar = {
+        AnimatedVisibility(
+            !(tapToLower && barLowered),
+            enter = slideInVertically { it } + expandVertically(expandFrom = Alignment.Top),
+            exit = slideOutVertically { it } + shrinkVertically(shrinkTowards = Alignment.Top)
+        ) { MiptvNavBar(if (state.sourcesOpen) null else state.destination, actions.navigate) }
+    }) { padding ->
         val guide = state.guideSheet
         val scrollState = key(state.destination, state.sourcesOpen, state.channelsOpen, state.playerOpen && state.selected != null, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
         // Once the day's programmes arrive, show the one on air (or the searched one) first.
@@ -236,9 +257,9 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                     guideSection(state, guide!!, playback?.takeIf { state.selected != null }, actions.guide, actions.fullscreen, actions.toggleFavorite)
                 }
                 state.destination == Destination.HOME -> ContentList(scrollState, spacing = 22.dp) { homeSection(state, pages.home, actions) }
-                state.destination == Destination.TV -> TvScreen(state, pages.tv, playback?.takeIf { state.selected != null }, actions, scrollState)
-                state.destination == Destination.MOVIES -> MoviesScreen(state, pages.movies, playback, actions.vod, scrollState)
-                state.destination == Destination.SERIES -> SeriesScreen(state, pages.series, playback, actions.vod, nextEpisode, scrollState)
+                state.destination == Destination.TV -> TvScreen(state, pages.tv, playback?.takeIf { state.selected != null }, actions, scrollState) { controls -> barLowered = !controls }
+                state.destination == Destination.MOVIES -> MoviesScreen(state, pages.movies, playback, actions.vod, scrollState, sideways) { controls -> barLowered = !controls }
+                state.destination == Destination.SERIES -> SeriesScreen(state, pages.series, playback, actions.vod, nextEpisode, scrollState, sideways) { controls -> barLowered = !controls }
                 else -> {
                     AppHeader("Recherche", state.sourcesOpen, actions.openSources)
                     ContentList(scrollState, padded = true) { searchSection(state, pages, actions) }

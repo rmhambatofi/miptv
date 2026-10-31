@@ -1,6 +1,8 @@
 package com.miptv
 
 import androidx.compose.runtime.*
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.espresso.Espresso
@@ -28,12 +30,16 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
 
     private val repository = MemoryChannelRepository(loader)
 
-    private fun launch(withSource: Boolean = true): LiveViewModel {
+    /** [sideways] lays the app out as on a phone turned to landscape. */
+    private fun launch(withSource: Boolean = true, sideways: Boolean = false): LiveViewModel {
         if (withSource) runBlocking { repository.addSource("Démo", "https://demo.example/list.m3u", SourceKind.URL) }
         val model = LiveViewModel(repository)
         compose.setContent {
             val state by model.state.collectAsState()
-            MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
+            val configuration = Configuration(LocalConfiguration.current).apply { if (sideways) orientation = Configuration.ORIENTATION_LANDSCAPE }
+            CompositionLocalProvider(LocalConfiguration provides configuration) {
+                MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
+            }
         }
         return model
     }
@@ -172,6 +178,24 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         assertNull(model.state.value.selected)
         compose.onNodeWithTag("nav-HOME").performClick()
         compose.onNodeWithText("Votre cinéma de poche").assertIsDisplayed()
+    }
+
+    @Test fun sidewaysPlayerLowersAndRaisesTheTabBarOnTouch() {
+        val model = launch(sideways = true)
+        compose.onNodeWithTag("nav-TV").performClick()
+        openCategory("category-all")
+        scrollTo(model.channelTag("bbb"))
+        compose.onNodeWithTag(model.channelTag("bbb")).performClick()
+        compose.onNodeWithTag("nav-TV").assertIsDisplayed()
+        compose.onNodeWithTag("player-picture").performClick()
+        compose.onNodeWithTag("nav-TV").assertDoesNotExist()
+        compose.onNodeWithTag("player-picture").performClick()
+        compose.onNodeWithTag("nav-TV").assertIsDisplayed()
+        // Lowered, then back to the channels: the bar returns with the lists.
+        compose.onNodeWithTag("player-picture").performClick()
+        compose.onNodeWithTag("minimize-player").assertDoesNotExist()
+        compose.runOnIdle { model.minimizePlayer() }
+        compose.onNodeWithTag("nav-TV").assertIsDisplayed()
     }
 
     @Test fun favoriteStarFeedsTheFavoritesCategory() {

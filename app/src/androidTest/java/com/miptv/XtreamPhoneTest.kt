@@ -1,7 +1,11 @@
 package com.miptv
 
+import android.content.res.Configuration
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.espresso.Espresso
@@ -18,12 +22,16 @@ class XtreamPhoneTest {
     }
     private val repository = MemoryChannelRepository(loader, xtream)
 
-    private fun launch(withProvider: Boolean): LiveViewModel {
+    /** [sideways] lays the app out as on a phone turned to landscape. */
+    private fun launch(withProvider: Boolean, sideways: Boolean = false): LiveViewModel {
         if (withProvider) runBlocking { repository.addXtreamSource("Fournisseur", XtreamAccount("portal.example:8080", "u-test", "p-test")) }
         val model = LiveViewModel(repository)
         compose.setContent {
             val state by model.state.collectAsState()
-            MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
+            val configuration = Configuration(LocalConfiguration.current).apply { if (sideways) orientation = Configuration.ORIENTATION_LANDSCAPE }
+            CompositionLocalProvider(LocalConfiguration provides configuration) {
+                MiptvTheme { PhoneApp(state, model.actions(), model.feeds()) }
+            }
         }
         return model
     }
@@ -63,6 +71,36 @@ class XtreamPhoneTest {
         compose.onNodeWithTag("source-expiry-1").assertTextContains("01/01/2027", substring = true)
         // The password never reaches the state.
         compose.onNodeWithText("p-test", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun sidewaysFilmFillsTheTabAndATouchMovesTheTabBar() {
+        val model = launch(withProvider = true, sideways = true)
+        compose.onNodeWithTag("nav-MOVIES").performClick()
+        scrollTo("movie-xtream:1:movie:5001")
+        compose.onNodeWithTag("movie-xtream:1:movie:5001").performClick()
+        compose.waitUntil(5_000) { model.state.value.movieSheet?.loading == false }
+        scrollTo("play-movie")
+        compose.onNodeWithTag("play-movie").performClick()
+        compose.waitUntil(5_000) { model.state.value.vod != null }
+        // The picture takes the tab: no sheet list around it.
+        compose.onNodeWithTag("vod-player").assertIsDisplayed()
+        compose.onNodeWithTag("content").assertDoesNotExist()
+        compose.onNodeWithTag("nav-MOVIES").assertIsDisplayed()
+        // Away from the Media3 buttons, each touch toggles the controller; the bar follows it.
+        fun touch(): Boolean {
+            compose.onNodeWithTag("vod-player").performTouchInput { click(Offset(width * 0.1f, height * 0.3f)) }
+            compose.waitForIdle()
+            return compose.onAllNodesWithTag("nav-MOVIES").fetchSemanticsNodes().isNotEmpty()
+        }
+        val first = touch()
+        val second = touch()
+        assert(first != second) { "the tab bar did not move between two touches" }
+        if (!second) assert(touch()) { "the tab bar did not come back" }
+        // The close button comes and goes with the controller.
+        if (compose.onAllNodesWithTag("close-player").fetchSemanticsNodes().isEmpty()) touch()
+        compose.onNodeWithTag("close-player").performClick()
+        compose.onNodeWithTag("vod-player").assertDoesNotExist()
+        compose.onNodeWithTag("nav-MOVIES").assertIsDisplayed()
     }
 
     @Test fun filmsGridOpensASheetThatPlays() {
