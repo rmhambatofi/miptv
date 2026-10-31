@@ -129,6 +129,29 @@ adb shell am start -n com.miptv/.MainActivity
 
 Aucune clé, aucun compte ni aucune configuration fournisseur n'est nécessaire à la compilation.
 
+### Clé de signature partagée
+
+Android n'accepte une mise à jour que signée par la même clé que l'application installée. Pour que l'APK de la CI et celui compilé sur n'importe quel ordinateur se remplacent sans désinstaller (donc sans perdre sources, favoris et mots de passe), l'APK de debug est signé avec une clé dédiée à miptv. Sans cette clé, la compilation fonctionne et signe avec la clé de debug de la machine.
+
+Une seule fois, créer la clé (mot de passe solide) et en garder une copie hors du dépôt : perdue, plus aucune mise à jour n'est possible sans désinstaller.
+
+```sh
+keytool -genkeypair -v -keystore miptv.jks -alias miptv -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Sur chaque ordinateur, placer `miptv.jks` à la racine du dépôt et créer `keystore.properties` à côté (les deux sont ignorés par git) :
+
+```properties
+storeFile=miptv.jks
+storePassword=…
+keyAlias=miptv
+keyPassword=…
+```
+
+Pour la CI, dans *Settings → Secrets and variables → Actions* du dépôt : `MIPTV_KEYSTORE_BASE64` (sortie de `base64 -w0 miptv.jks`, ou `base64 -i miptv.jks` sur macOS), `MIPTV_KEYSTORE_PASSWORD`, `MIPTV_KEY_ALIAS` et `MIPTV_KEY_PASSWORD`. Les PR venant d'un fork ne reçoivent pas ces secrets ; leur APK est signé avec une clé jetable. Le workflow ne doit jamais utiliser `pull_request_target`, qui leur donnerait accès aux secrets.
+
+Le passage à cette clé demande de désinstaller une dernière fois l'application signée avec l'ancienne.
+
 ## Architecture
 
 Un seul module `app`, en MVVM pragmatique, sans Hilt, Retrofit ni OkHttp. `MiptvApplication` câble à la main la base Room, le chargeur de playlists, le client Xtream et le chiffrement en un seul dépôt pour tout le processus, puis planifie l'actualisation du guide. `LiveViewModel` expose un `StateFlow` que lit l'interface Compose.
