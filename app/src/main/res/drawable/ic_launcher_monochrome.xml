@@ -1,0 +1,4 @@
+<!-- Themed icon (Android 13+): the launcher tints this shape. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M44.4,34.8L73.2,54L44.4,73.2z" />
+</vector>

@@ -4,7 +4,7 @@ Lecteur IPTV natif pour **smartphones Android** (API 26+), écrit en Kotlin avec
 
 L'application ne livre aucun contenu : aucune playlist, aucun compte, aucun flux ni aucun guide n'est inclus, aucun fournisseur n'est suggéré, et la licéité des sources ajoutées relève de l'utilisateur. Elle n'a ni compte, ni backend, ni télémétrie. Elle cible les téléphones à écran tactile : pas de lanceur Leanback, de composant Android TV ni de navigation D-pad, et les tablettes ne sont ni conçues ni validées.
 
-Version 0.5.0 (`versionCode` 5).
+Version 1.0.0 (`versionCode` 6), cible Android 16 (`targetSdk` 36). La publication sur Google Play est décrite dans [store/PLAY_STORE.md](store/PLAY_STORE.md).
 
 ## Sommaire
 
@@ -113,7 +113,7 @@ Sources, catégories, chaînes, favoris, catalogue VOD, positions de lecture et 
 
 ## Compiler et installer
 
-Prérequis : JDK 17 ou 21, Android SDK 35 et Build Tools 35.0.0. Définir `ANDROID_HOME`, ou `sdk.dir` dans `local.properties` (fichier ignoré par git). Le wrapper Gradle est versionné, avec contrôle SHA-256 de la distribution ; sous Windows, utiliser `gradlew.bat`.
+Prérequis : JDK 17 ou 21, Android SDK 36 (platform) et Build Tools 35.0.0. Définir `ANDROID_HOME`, ou `sdk.dir` dans `local.properties` (fichier ignoré par git). Le wrapper Gradle est versionné, avec contrôle SHA-256 de la distribution ; sous Windows, utiliser `gradlew.bat`.
 
 ```sh
 ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
@@ -124,7 +124,7 @@ Sur un émulateur smartphone ou un téléphone connecté :
 ```sh
 ./gradlew connectedDebugAndroidTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.miptv/.MainActivity
+adb shell am start -n fr.manitra.miptv/.MainActivity
 ```
 
 Aucune clé, aucun compte ni aucune configuration fournisseur n'est nécessaire à la compilation.
@@ -216,7 +216,7 @@ WorkManager porte deux travaux autour de `refreshStaleGuides`, tous deux en `KEE
 
 ### Versions et manifeste
 
-AGP 8.13.2, Gradle 8.13, Kotlin, plugin Compose et KSP 2.0.21, Compose BOM 2024.12.01, Lifecycle 2.8.7, Media3 1.5.1, Room 2.6.1, Paging 3.3.6, WorkManager 2.9.1, Coil 2.7.0, coroutines 1.9.0. Compile et target SDK 35, min SDK 26, bytecode Java 17.
+AGP 8.13.2, Gradle 8.13, Kotlin, plugin Compose et KSP 2.0.21, Compose BOM 2024.12.01, Lifecycle 2.8.7, Media3 1.5.1, Room 2.6.1, Paging 3.3.6, WorkManager 2.9.1, Coil 2.7.0, coroutines 1.9.0. Compile et target SDK 36, min SDK 26, bytecode Java 17.
 
 Le manifeste ne demande que `INTERNET`. Il autorise le trafic en clair (`usesCleartextTraffic="true"`) parce que la grande majorité des playlists, portails Xtream et flux IPTV sont servis en `http://`. L'activité déclare `configChanges` : la rotation et le plein écran ne recréent pas l'activité, et le lecteur survit.
 
@@ -265,6 +265,7 @@ Les tests sur appareil réel, notamment avec un vrai fournisseur Xtream et un vr
 
 - `VALIDATION.md` : scénarios de validation sur appareil et résultats effectifs, sprint par sprint.
 - `SPRINT3.md`, `SPRINT4.md`, `SPRINT5.md` : plans et bilans des sprints.
+- `store/` : publication Google Play (`PLAY_STORE.md`), politique de confidentialité (`PRIVACY.md`) et graphismes de la fiche.
 
 Historique en bref :
 
