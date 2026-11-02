@@ -1,5 +1,7 @@
 name: Android phone
 on:
+  # "Run workflow" in the Actions tab: builds the chosen branch on demand, e.g. after adding the signing secrets.
+  workflow_dispatch:
   push:
     branches: [main, feature/initial-android-phone]
   pull_request:
