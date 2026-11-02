@@ -61,6 +61,8 @@ Fichiers à envoyer :
 > • Aucun compte, aucune publicité, aucun suivi
 > • Tout reste sur votre téléphone ; les mots de passe sont chiffrés
 
+**Traductions** : `store/listing-translations.csv` contient le nom, la description courte et la description complète en fr-FR, en-US, es-ES, pt-BR, de-DE et it-IT. À importer par *Fiche Play Store par défaut → Importez des traductions avec l'IA → Importer un fichier*. Chaque traduction précise que l'interface n'existe qu'en français.
+
 **Graphismes** (dans `store/graphics/`) :
 
 - Icône 512 × 512 : `icon-512.png`
