@@ -24,7 +24,23 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      # The shared signing key, so the CI APK updates an app installed from a computer. Secrets never reach
+      # pull requests from forks: their build falls back to a throwaway debug key.
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MIPTV_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/miptv.jks"
+            echo "MIPTV_KEYSTORE_FILE=$RUNNER_TEMP/miptv.jks" >> "$GITHUB_ENV"
+          else
+            echo "No MIPTV_KEYSTORE_BASE64 secret: the APK is signed with a throwaway debug key."
+          fi
       - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+        env:
+          MIPTV_KEYSTORE_PASSWORD: ${{ secrets.MIPTV_KEYSTORE_PASSWORD }}
+          MIPTV_KEY_ALIAS: ${{ secrets.MIPTV_KEY_ALIAS }}
+          MIPTV_KEY_PASSWORD: ${{ secrets.MIPTV_KEY_PASSWORD }}
       - name: Room schema is committed
         run: |
           if [ -n "$(git status --porcelain -- app/schemas)" ]; then

@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -124,6 +125,13 @@ fun rememberPlayback(
     val owner = LocalLifecycleOwner.current
     val playback = remember(item?.id) { item?.let { Playback(it, buildPlayer(context, it)) } }
     val report = rememberUpdatedState(onProgress)
+    // The screen stays on while a channel, film or episode plays (mini player included); paused, it may lock again.
+    val view = LocalView.current
+    val keepScreenOn = playback?.playing == true
+    DisposableEffect(view, keepScreenOn) {
+        view.keepScreenOn = keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
     DisposableEffect(playback, owner) {
         if (playback == null) return@DisposableEffect onDispose { }
         val player = playback.player
