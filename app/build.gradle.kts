@@ -8,15 +8,15 @@ plugins {
     id("androidx.room")
 }
 android {
-    namespace = "com.miptv"
-    compileSdk = 35
+    namespace = "fr.manitra.miptv"
+    compileSdk = 36
     defaultConfig {
-        applicationId = "com.miptv"
+        applicationId = "fr.manitra.miptv"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 5
-        versionName = "0.5.0"
-        testInstrumentationRunner = "com.miptv.MiptvTestRunner"
+        targetSdk = 36
+        versionCode = 6
+        versionName = "1.0.0"
+        testInstrumentationRunner = "fr.manitra.miptv.MiptvTestRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
     testOptions.unitTests.isReturnDefaultValues = true
@@ -46,6 +46,14 @@ android {
             keyPassword = signing.getProperty("keyPassword")
         }
         buildTypes.getByName("debug").signingConfig = miptv
+        // The same key is the upload key for Google Play: Play App Signing re-signs the bundle with the
+        // app signing key it holds, and a lost upload key can be reset from the Play Console.
+        buildTypes.getByName("release").signingConfig = miptv
+    }
+    buildTypes.getByName("release") {
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
     // Schemas are versioned and packaged for MigrationTestHelper in instrumented tests.
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")

@@ -25,7 +25,7 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       # The shared signing key, so the CI APK updates an app installed from a computer. Secrets never reach
       # pull requests from forks: their build falls back to a throwaway debug key.
       - name: Signing key
@@ -38,7 +38,7 @@ jobs:
           else
             echo "No MIPTV_KEYSTORE_BASE64 secret: the APK is signed with a throwaway debug key."
           fi
-      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest bundleRelease --stacktrace
         env:
           MIPTV_KEYSTORE_PASSWORD: ${{ secrets.MIPTV_KEYSTORE_PASSWORD }}
           MIPTV_KEY_ALIAS: ${{ secrets.MIPTV_KEY_ALIAS }}
@@ -56,5 +56,7 @@ jobs:
           name: android-phone-build
           path: |
             app/build/outputs/apk/debug/*.apk
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/mapping/release/mapping.txt
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
