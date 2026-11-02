@@ -30,7 +30,7 @@ miptv ne s'adresse pas aux enfants de moins de 13 ans et ne collecte sciemment a
 
 ## Contact
 
-Pour toute question : [ADRESSE DE CONTACT À COMPLÉTER]
+Pour toute question : r@manitra.fr
 
 ---
 
