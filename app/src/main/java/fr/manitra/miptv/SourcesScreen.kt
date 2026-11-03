@@ -23,8 +23,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import java.text.DateFormat
-import java.util.Date
 
 /** Callbacks of the Sources screen. */
 class SourceActions(
@@ -44,7 +42,7 @@ class SourceActions(
  * Locations are shown host-only and the password is masked; neither is ever logged.
  */
 fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
-    item { Text("Une playlist M3U/M3U8 par adresse ou fichier local, ou un fournisseur Xtream Codes avec vos identifiants. Tout reste sur l'appareil ; le mot de passe est chiffré.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    item { Text(tr.sourcesIntro, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     item { AddSourceCard(state, actions) }
     item {
         val status = state.importStatus
@@ -57,19 +55,23 @@ fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
             Text(status.message, color = if (status.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary, modifier = Modifier.testTag("import-status"))
         }
     }
-    item { Text("Sources configurées · ${state.sources.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-    if (state.sources.isEmpty()) item { Text("Aucune source pour le moment.", modifier = Modifier.testTag("no-sources")) }
+    item { Text(tr.configuredSources(state.sources.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+    if (state.sources.isEmpty()) item { Text(tr.noSourceYet, modifier = Modifier.testTag("no-sources")) }
     items(state.sources, key = { "source-${it.id}" }) { source -> SourceCard(source, state.importStatus.running, actions.guide, { actions.refresh(source.id) }, { actions.remove(source.id) }) }
 }
 
-private enum class SourceForm(val label: String) { M3U("Playlist M3U"), XTREAM("Fournisseur Xtream") }
+private enum class SourceForm {
+    M3U, XTREAM;
+
+    val label: String get() = when (this) { M3U -> tr.m3uPlaylist; XTREAM -> tr.xtreamProvider }
+}
 
 @Composable
 private fun AddSourceCard(state: LiveState, actions: SourceActions) {
     var form by rememberSaveable { mutableStateOf(SourceForm.M3U) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Nouvelle source", style = MaterialTheme.typography.titleMedium)
+            Text(tr.newSource, style = MaterialTheme.typography.titleMedium)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SourceForm.entries.forEachIndexed { index, option ->
                     SegmentedButton(
@@ -104,15 +106,15 @@ private fun M3uForm(status: ImportStatus, addUrl: (String, String) -> Unit, addF
         addFile(name.ifBlank { displayName.orEmpty() }, uri.toString())
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nom (facultatif)") }, singleLine = true,
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(tr.nameOptional) }, singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("source-name"))
-        OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("Adresse de la playlist") }, singleLine = true,
-            placeholder = { Text("https://exemple.tld/playlist.m3u") },
+        OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(tr.playlistAddress) }, singleLine = true,
+            placeholder = { Text(tr.playlistPlaceholder) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth().testTag("source-url"))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { addUrl(name, url) }, enabled = !status.running && url.isNotBlank(), modifier = Modifier.testTag("add-url")) { Text("Ajouter l'adresse") }
-            OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !status.running, modifier = Modifier.testTag("add-file")) { Text("Fichier .m3u") }
+            Button(onClick = { addUrl(name, url) }, enabled = !status.running && url.isNotBlank(), modifier = Modifier.testTag("add-url")) { Text(tr.addAddress) }
+            OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !status.running, modifier = Modifier.testTag("add-file")) { Text(tr.m3uFile) }
         }
     }
 }
@@ -128,19 +130,19 @@ private fun XtreamForm(state: LiveState, actions: SourceActions) {
     val complete = server.isNotBlank() && username.isNotBlank() && password.isNotEmpty()
     val busy = state.importStatus.running || state.checkingAccount
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nom (facultatif)") }, singleLine = true,
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(tr.nameOptional) }, singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("xtream-name"))
-        OutlinedTextField(value = server, onValueChange = { server = it; actions.clearCheck() }, label = { Text("Serveur") }, singleLine = true,
-            placeholder = { Text("http://exemple.tld:8080") },
+        OutlinedTextField(value = server, onValueChange = { server = it; actions.clearCheck() }, label = { Text(tr.server) }, singleLine = true,
+            placeholder = { Text(tr.serverPlaceholder) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth().testTag("xtream-server"))
-        OutlinedTextField(value = username, onValueChange = { username = it; actions.clearCheck() }, label = { Text("Identifiant") }, singleLine = true,
+        OutlinedTextField(value = username, onValueChange = { username = it; actions.clearCheck() }, label = { Text(tr.username) }, singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("xtream-username"))
-        OutlinedTextField(value = password, onValueChange = { password = it; actions.clearCheck() }, label = { Text("Mot de passe") }, singleLine = true,
+        OutlinedTextField(value = password, onValueChange = { password = it; actions.clearCheck() }, label = { Text(tr.password) }, singleLine = true,
             visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
-                TextButton(onClick = { showPassword = !showPassword }, modifier = Modifier.testTag("toggle-password")) { Text(if (showPassword) "Masquer" else "Afficher") }
+                TextButton(onClick = { showPassword = !showPassword }, modifier = Modifier.testTag("toggle-password")) { Text(if (showPassword) tr.hide else tr.show) }
             },
             modifier = Modifier.fillMaxWidth().testTag("xtream-password"))
         state.accountCheck?.let { check ->
@@ -151,20 +153,20 @@ private fun XtreamForm(state: LiveState, actions: SourceActions) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = { actions.checkXtream(server, username, password) }, enabled = !busy && complete, modifier = Modifier.testTag("check-xtream")) {
-                if (state.checkingAccount) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("Tester la connexion")
+                if (state.checkingAccount) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text(tr.testConnection)
             }
-            Button(onClick = { actions.addXtream(name, server, username, password) }, enabled = !busy && complete, modifier = Modifier.testTag("add-xtream")) { Text("Ajouter") }
+            Button(onClick = { actions.addXtream(name, server, username, password) }, enabled = !busy && complete, modifier = Modifier.testTag("add-xtream")) { Text(tr.add) }
         }
     }
 }
 
 /** "Compte actif jusqu'au 01/01/2027 · 1/2 connexions · formats ts, m3u8". */
 fun describeAccount(info: XtreamAccountInfo): String {
-    val until = info.expiresAt?.let { "jusqu'au ${frenchDate(it)}" } ?: "sans date d'expiration"
-    val connections = info.maxConnections?.let { max -> "${info.activeConnections ?: 0}/$max connexion(s)" }
-    val formats = info.allowedOutputFormats.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { "formats $it" }
+    val until = info.expiresAt?.let { tr.until(formatDate(it)) } ?: tr.noExpiry
+    val connections = info.maxConnections?.let { max -> tr.connections(info.activeConnections ?: 0, max) }
+    val formats = info.allowedOutputFormats.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { tr.formats(it) }
     val warning = info.connectionsMessage()
-    return listOfNotNull("Compte ${info.status.lowercase()} $until", connections, formats, warning).joinToString(" · ")
+    return listOfNotNull(tr.accountStatus(info.status.lowercase(), until), connections, formats, warning).joinToString(" · ")
 }
 
 @Composable
@@ -174,33 +176,33 @@ private fun SourceCard(source: Source, busy: Boolean, guide: GuideActions, refre
             Text(source.name, style = MaterialTheme.typography.titleMedium)
             Text(
                 when (source.kind) {
-                    SourceKind.URL -> "Adresse · ${source.location.redactedHost()}"
-                    SourceKind.FILE -> "Fichier local"
+                    SourceKind.URL -> "${tr.address} · ${source.location.redactedHost()}"
+                    SourceKind.FILE -> tr.localFile
                     SourceKind.XTREAM -> "Xtream · ${source.location.redactedHost()}" + (source.username?.let { " · $it" } ?: "")
                 },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (source.kind == SourceKind.XTREAM) {
                 Text(
-                    source.expiresAt?.let { "Compte valable jusqu'au ${frenchDate(it)}" } ?: "Compte sans date d'expiration",
+                    source.expiresAt?.let { tr.accountValidUntil(formatDate(it)) } ?: tr.accountWithoutExpiry,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("source-expiry-${source.id}")
                 )
             }
             Text(
                 source.lastRefreshed?.let {
-                    val counts = if (source.kind == SourceKind.XTREAM) "${source.channelCount} chaînes · ${source.movieCount} films · ${source.seriesCount} séries" else "${source.channelCount} chaînes"
-                    "$counts · actualisé le ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))}"
-                } ?: "Jamais actualisé",
+                    val counts = if (source.kind == SourceKind.XTREAM) tr.sourceCountsXtream(source.channelCount, source.movieCount, source.seriesCount) else tr.channelCount(source.channelCount)
+                    "$counts · ${tr.refreshedOn(formatDateTime(it))}"
+                } ?: tr.neverRefreshed,
                 style = MaterialTheme.typography.bodySmall
             )
             source.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             SourceGuide(source, busy, guide)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = refresh, enabled = !busy, modifier = Modifier.testTag("refresh-${source.id}")) {
-                    Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Actualiser")
+                    Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(4.dp)); Text(tr.refresh)
                 }
                 TextButton(onClick = remove, enabled = !busy, modifier = Modifier.testTag("remove-${source.id}")) {
-                    Icon(Icons.Default.Delete, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Supprimer")
+                    Icon(Icons.Default.Delete, contentDescription = null); Spacer(Modifier.width(4.dp)); Text(tr.delete)
                 }
             }
         }

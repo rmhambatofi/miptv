@@ -74,7 +74,7 @@ Un seul lecteur Media3/ExoPlayer sert la TV, les films et les épisodes : HLS, M
 - **TV** : commandes propres, dans le style de YouTube : réduire, « DIRECT », pause, son, guide et plein écran. Elles se masquent après 5 s de lecture. Le plein écran ajoute chaîne précédente et suivante. Un décalage du direct est rattrapé automatiquement.
 - **Films et épisodes** : contrôleur Media3 avec barre de temps et sauts de ±10 s. La position est sauvegardée toutes les 10 s, à la fin et à la fermeture ; au-delà de 95 %, le titre est « Vu ».
 - **Plein écran** en paysage, barres système masquées ; sortie par Retour ou par la croix. La rotation et le passage en plein écran réutilisent le même lecteur.
-- **Erreurs** : un message explicite en français (réseau, code HTTP, 404, format, décodeur) avec « Réessayer », y compris quand un flux reste plus de 20 s en chargement.
+- **Erreurs** : un message explicite dans la langue de l'interface (réseau, code HTTP, 404, format, décodeur) avec « Réessayer », y compris quand un flux reste plus de 20 s en chargement.
 
 Le lecteur est libéré au changement de sélection, de catégorie, d'onglet ou de fiche, et mis en pause quand l'application passe en arrière-plan (la reprise est manuelle).
 
@@ -98,6 +98,12 @@ Le guide est réimporté avec sa source. Il est aussi rechargé automatiquement,
 ### Recherche
 
 La recherche est locale et insensible à la casse et aux accents (« chaine » trouve « CHAÎNE »). Les résultats sont groupés en Chaînes, Films, Séries et, dès qu'une source a un guide, Programmes (en cours ou à venir), avec leurs compteurs. Un résultat ouvre la chaîne dans TV, la fiche dans Films ou Séries, ou le guide de la chaîne au jour du programme.
+
+### Langues
+
+L'interface existe en **français**, **anglais** et **espagnol**. Elle suit la langue du téléphone ; toute autre langue affiche l'anglais. Sur Android 13 et plus, la langue de l'application se choisit aussi à part, dans Paramètres › Applications › miptv › Langue (`res/xml/locales_config.xml`). Les dates, jours, durées et notes suivent les conventions de la langue (« 01/01/2025 » ou « Jan 1, 2025 », « 7,6 » ou « 7.6 »).
+
+Les textes déjà enregistrés (dernière erreur d'une source, noms de catégories de repli comme « Sans catégorie ») gardent la langue du moment où ils ont été produits, jusqu'à la prochaine actualisation de la source.
 
 ### Favoris et persistance
 
@@ -160,7 +166,7 @@ Un seul module `app`, en MVVM pragmatique, sans Hilt, Retrofit ni OkHttp. `Miptv
 
 - `Domain.kt` : modèles (`Category`, `Channel`, `Source`, `ImportResult`, `Movie`, `Series`, `Season`, `Episode`, `SeriesInfo`, `Programme`, `EpgChannel`, `NowNext`, `ProgrammeHit`, `EpgWindow`), `ChannelQuery` (catégorie + filtre) et `searchKey` (forme normalisée des noms). Contrats `ChannelRepository` (catégories, favoris et sources en flux ; listes paginées et compteurs ; sources, favoris, reprise ; guide : `setEpgUrl`, `refreshEpg`, `nowAndNext`, `programmes`, `guideEnd`, `searchProgrammes`, `ensureShortEpg`, `purgeProgrammes`), `M3uAdapter` et `XtreamClient`. Compte Xtream (`XtreamAccount`, `XtreamAccountInfo` avec `blocker()`).
 - `Persistence.kt` : entités, DAO et base Room (`miptv.db`, version 4, migrations `MIGRATION_1_2` à `MIGRATION_3_4`), `KeysetPagingSource` et `RoomChannelRepository` : sources M3U et Xtream, catalogue VOD, cache des saisons et épisodes, favoris, positions de reprise et guide (table `programmes`, clé de guide des chaînes, import en flux par table de transit, « maintenant / ensuite », guide du jour, recherche, cache de l'EPG court).
-- `Sources.kt` : `Http` (`HttpURLConnection` avec délais et redirections manuelles), `PlaylistLoader` (`AndroidPlaylistLoader` : `Http` pour les adresses, `ContentResolver` pour les URI SAF), messages d'erreur en français sans écho de l'adresse, et `MemoryChannelRepository`, implémentation en mémoire qui sert de référence et de support aux tests.
+- `Sources.kt` : `Http` (`HttpURLConnection` avec délais et redirections manuelles), `PlaylistLoader` (`AndroidPlaylistLoader` : `Http` pour les adresses, `ContentResolver` pour les URI SAF), messages d'erreur dans la langue de l'interface sans écho de l'adresse, et `MemoryChannelRepository`, implémentation en mémoire qui sert de référence et de support aux tests.
 - `Secrets.kt` : `SecretCipher`, `AesGcmCipher` (AES-256-GCM, nonce aléatoire par valeur, sortie `v1:` + base64) et `KeystoreSecretCipher`, dont la clé vit dans l'Android Keystore.
 - `GuideRefresh.kt` : `refreshStaleGuides` (recharge les guides plus vieux qu'un seuil, puis purge) et `GuideRefreshWorker`.
 
@@ -180,6 +186,7 @@ Un seul module `app`, en MVVM pragmatique, sans Hilt, Retrofit ni OkHttp. `Miptv
 - `GuideScreens.kt` : ligne « maintenant / ensuite » (`NowLine`), bouton Guide, feuille guide (`guideSection`), groupe Programmes de la Recherche, bloc guide de la fiche source (`SourceGuide`).
 - `Preview.kt` : lecteur Media3 (`Playback`, `PlayerSurface`, `LivePlayer`, `Preview`, `VodPlayer`, `FullscreenPlayer`), résolution de l'URL au démarrage et à chaque « Réessayer », en-têtes HTTP (`User-Agent`, `Referer`), délai de chargement borné (`LoadingWatch`), sauvegarde de la position, messages d'erreur.
 - `SourcesScreen.kt` : formulaires M3U et Xtream, test de connexion, sélecteur SAF, liste des sources.
+- `I18n.kt` : `Language` (français, anglais, espagnol ; anglais par défaut), langue courante (`I18n`, réglée par l'application et l'activité d'après leur configuration), accès aux textes (`tr`), dates dans les conventions de la langue. `Texts.kt` : interface de tous les textes de l'application ; `TextsFr.kt`, `TextsEn.kt`, `TextsEs.kt` : une implémentation par langue. Ajouter une langue revient à implémenter `Texts` et à l'inscrire dans `Language` et `locales_config.xml` : le compilateur signale tout texte manquant.
 - `Design.kt` : palette, icônes (`MiptvIcons`), en-têtes, barre d'onglets, boutons pilule, ligne de progression, badge « DIRECT ». `Splash.kt` : écran d'ouverture et son.
 
 ## Choix techniques
@@ -232,7 +239,7 @@ Le manifeste ne demande que `INTERNET`. Il autorise le trafic en clair (`usesCle
 
 Aucun test ne dépend du réseau. Les réponses Xtream enregistrées et anonymisées, le faux client Xtream et les scénarios de guide partagés vivent dans `app/src/sharedTest`, utilisé à la fois par les tests locaux et les tests instrumentés.
 
-**122 tests unitaires** (`app/src/test`) :
+**126 tests unitaires** (`app/src/test`) :
 
 - parseurs : M3U, XMLTV, JSON, réponses Xtream (`M3uParserTest`, `XmltvParserTest`, `JsonStreamReaderTest`, `XtreamParserTest`), dont des volumes de 25 000 chaînes, 30 000 films et 100 000 programmes ;
 - `HttpXtreamClient` face à un serveur local (`XtreamClientTest`) ;
@@ -240,7 +247,10 @@ Aucun test ne dépend du réseau. Les réponses Xtream enregistrées et anonymis
 - dépôts mémoire : sources Xtream et guide (`MemoryXtreamRepositoryTest`, `MemoryEpgRepositoryTest`) ;
 - programmes qui se chevauchent (`ResolveOverlapsTest`) ;
 - ViewModel : catalogue, sources, Xtream, guide (`LiveViewModelTest`, `XtreamViewModelTest`, `GuideViewModelTest`) ;
-- mise en forme et messages d'erreur de lecture (`FormatTest`, `PlaybackErrorTest`).
+- mise en forme et messages d'erreur de lecture (`FormatTest`, `PlaybackErrorTest`) ;
+- langues : choix de la langue, textes anglais et espagnols, aucun texte vide (`I18nTest`).
+
+Les tests locaux vérifient les textes français : leur JVM tourne en français quelle que soit la machine (`testOptions` de `app/build.gradle.kts`), et `MiptvTestRunner` règle aussi les tests instrumentés en français.
 
 Les tests ViewModel utilisent `MemoryChannelRepository` avec un chargeur factice et un `StandardTestDispatcher`, et lisent les listes paginées avec `paging-testing`.
 

@@ -155,7 +155,7 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
     }
 
     private fun fallbackName(url: String): String =
-        url.substringBefore('?').trimEnd('/').substringAfterLast('/').ifEmpty { "Chaîne sans nom" }
+        url.substringBefore('?').trimEnd('/').substringAfterLast('/').ifEmpty { tr.unnamedChannel }
 
     private fun channelId(key: String) = "s$sourceId-" + fnv(key)
 
@@ -171,7 +171,7 @@ class M3uParser(private val sourceId: Long = 0L) : M3uAdapter {
     }
 
     companion object {
-        const val DEFAULT_GROUP = "Sans catégorie"
+        val DEFAULT_GROUP: String get() = tr.noCategory
         private val EPG_URL_KEYS = setOf("url-tvg", "x-tvg-url", "tvg-url")
     }
 }

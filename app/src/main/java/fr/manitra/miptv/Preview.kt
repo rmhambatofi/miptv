@@ -48,7 +48,7 @@ import kotlinx.coroutines.delay
 
 /** One ExoPlayer for one [item]. Status text and flags drive the UI; [retry] resolves and prepares again. */
 class Playback(val item: PlayItem, val player: ExoPlayer) {
-    var status by mutableStateOf("Chargement…")
+    var status by mutableStateOf(tr.loading)
     var failed by mutableStateOf(false)
     /** A film or episode reached its end. */
     var ended by mutableStateOf(false)
@@ -67,7 +67,7 @@ class Playback(val item: PlayItem, val player: ExoPlayer) {
     fun retry() {
         failed = false
         ended = false
-        status = "Chargement…"
+        status = tr.loading
         attempt++
     }
     fun togglePlay() {
@@ -79,12 +79,12 @@ class Playback(val item: PlayItem, val player: ExoPlayer) {
     }
 }
 
-/** How long a stream may keep loading, while playback is wanted, before the error and "Réessayer" show. */
+/** How long a stream may keep loading, while playback is wanted, before the error and tr.retry show. */
 const val LOADING_LIMIT_MS = 20_000L
 
-const val LOADING_TIMEOUT_MESSAGE = "Le flux ne répond pas après 20 secondes."
+val LOADING_TIMEOUT_MESSAGE: String get() = tr.loadingTimeout
 
-const val CREDENTIALS_MESSAGE = "Identifiants de la source à ressaisir dans Sources."
+val CREDENTIALS_MESSAGE: String get() = tr.sourceCredentialsToReenter
 
 /** Resume positions are written this often while a film or episode plays, and when the player closes. */
 const val PROGRESS_INTERVAL_MS = 10_000L
@@ -146,10 +146,10 @@ fun rememberPlayback(
                 playback.ready = state == Player.STATE_READY
                 if (playback.failed && state == Player.STATE_IDLE) return
                 playback.status = when (state) {
-                    Player.STATE_BUFFERING -> "Chargement…"
-                    Player.STATE_READY -> "Utilisez les commandes tactiles pour lire ou mettre en pause."
-                    Player.STATE_ENDED -> "Lecture terminée"
-                    else -> "En attente"
+                    Player.STATE_BUFFERING -> tr.loading
+                    Player.STATE_READY -> tr.playerReadyHint
+                    Player.STATE_ENDED -> tr.playbackEnded
+                    else -> tr.waiting
                 }
                 if (state == Player.STATE_ENDED) {
                     playback.ended = true
@@ -161,7 +161,7 @@ fun rememberPlayback(
             }
             override fun onPlayerError(error: PlaybackException) {
                 if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-                    playback.status = "Flux en direct décalé, reprise…"
+                    playback.status = tr.liveBehindResuming
                     player.seekToDefaultPosition()
                     player.prepare()
                     return
@@ -240,24 +240,24 @@ private fun buildPlayer(context: Context, item: PlayItem): ExoPlayer {
 
 const val SEEK_STEP_MS = 10_000L
 
-/** French, user-facing description; never includes the stream URL. */
+/** User-facing description in the current language; never includes the stream URL. */
 @OptIn(UnstableApi::class)
 fun describePlaybackError(error: PlaybackException): String = when (error.errorCode) {
     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-    PlaybackException.ERROR_CODE_TIMEOUT -> "Connexion au flux impossible. Vérifiez votre réseau."
+    PlaybackException.ERROR_CODE_TIMEOUT -> tr.streamConnectionFailed
     PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
         val code = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
-        if (code != null) "Le serveur a refusé le flux (HTTP $code)." else "Le serveur a refusé le flux."
+        if (code != null) tr.streamRefusedHttp(code) else tr.streamRefused
     }
-    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "Flux introuvable (HTTP 404)."
-    PlaybackException.ERROR_CODE_IO_NO_PERMISSION, PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED -> "Accès au flux refusé."
+    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> tr.streamNotFound
+    PlaybackException.ERROR_CODE_IO_NO_PERMISSION, PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED -> tr.streamAccessDenied
     PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
     PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
-    PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> "Format du flux non reconnu."
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> tr.streamFormatUnknown
     PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
     PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED -> "Ce flux ne peut pas être décodé sur cet appareil."
-    else -> "Lecture indisponible. Vérifiez votre connexion."
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED -> tr.streamCannotDecode
+    else -> tr.playbackUnavailable
 }
 
 private const val DEFAULT_USER_AGENT = "miptv/0.4 (Android; Media3)"
@@ -329,20 +329,20 @@ fun LivePlayer(
                     Modifier.fillMaxWidth().align(Alignment.TopCenter).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent))).padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (onMinimize != null) OverlayButton(MiptvIcons.ChevronDown, "Réduire le lecteur", onMinimize, Modifier.testTag("minimize-player"))
+                    if (onMinimize != null) OverlayButton(MiptvIcons.ChevronDown, tr.minimizePlayer, onMinimize, Modifier.testTag("minimize-player"))
                     Spacer(Modifier.weight(1f))
                     LiveBadge(Modifier.padding(end = 8.dp))
-                    if (onClose != null) OverlayButton(MiptvIcons.Close, "Fermer le lecteur", onClose, Modifier.testTag("close-player"))
+                    if (onClose != null) OverlayButton(MiptvIcons.Close, tr.closePlayer, onClose, Modifier.testTag("close-player"))
                 }
                 Row(
                     Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OverlayButton(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, if (playback.playing) "Pause" else "Lecture", playback::togglePlay, Modifier.testTag("play-pause"))
-                    OverlayButton(if (playback.muted) MiptvIcons.Muted else MiptvIcons.Volume, if (playback.muted) "Rétablir le son" else "Couper le son", playback::toggleMute, Modifier.testTag("mute"))
+                    OverlayButton(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, if (playback.playing) tr.pause else tr.play, playback::togglePlay, Modifier.testTag("play-pause"))
+                    OverlayButton(if (playback.muted) MiptvIcons.Muted else MiptvIcons.Volume, if (playback.muted) tr.unmute else tr.mute, playback::toggleMute, Modifier.testTag("mute"))
                     Spacer(Modifier.weight(1f))
-                    if (onGuide != null) OverlayButton(MiptvIcons.Calendar, "Guide des programmes", onGuide, Modifier.testTag("player-guide"))
-                    OverlayButton(MiptvIcons.EnterFullscreen, "Plein écran", { onFullscreen(true) }, Modifier.testTag("enter-fullscreen"))
+                    if (onGuide != null) OverlayButton(MiptvIcons.Calendar, tr.programmeGuide, onGuide, Modifier.testTag("player-guide"))
+                    OverlayButton(MiptvIcons.EnterFullscreen, tr.fullscreen, { onFullscreen(true) }, Modifier.testTag("enter-fullscreen"))
                 }
             }
         }
@@ -362,7 +362,7 @@ private fun PlayerStatus(playback: Playback, modifier: Modifier = Modifier) {
     if (playback.ready && !playback.failed) return
     Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(playback.status, color = Palette.Text, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.testTag("player-status"))
-        if (playback.failed) PillButton("Réessayer", playback::retry, Modifier.testTag("retry"), height = 40.dp)
+        if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp)
     }
 }
 
@@ -413,13 +413,13 @@ fun VodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClose: () -
                     Text(playback.item.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     playback.item.subtitle?.let { Text(it, fontSize = 13.sp, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
-                IconButton(onClick = { onFullscreen(true) }, modifier = Modifier.testTag("enter-fullscreen")) { Icon(MiptvIcons.EnterFullscreen, contentDescription = "Plein écran") }
-                IconButton(onClick = onClose, modifier = Modifier.testTag("close-player")) { Icon(MiptvIcons.Close, contentDescription = "Fermer le lecteur") }
+                IconButton(onClick = { onFullscreen(true) }, modifier = Modifier.testTag("enter-fullscreen")) { Icon(MiptvIcons.EnterFullscreen, contentDescription = tr.fullscreen) }
+                IconButton(onClick = onClose, modifier = Modifier.testTag("close-player")) { Icon(MiptvIcons.Close, contentDescription = tr.closePlayer) }
             }
             if (!playback.ready || playback.failed || playback.ended) Text(playback.status, fontSize = 13.sp, color = Palette.Muted, modifier = Modifier.testTag("player-status"))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (playback.failed) PillButton("Réessayer", playback::retry, Modifier.testTag("retry"), height = 40.dp)
-                if (onNext != null) PillButton("Épisode suivant", onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, primary = playback.ended, height = 40.dp)
+                if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp)
+                if (onNext != null) PillButton(tr.nextEpisode, onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, primary = playback.ended, height = 40.dp)
             }
         }
     }
@@ -444,14 +444,14 @@ fun SidewaysVodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClo
                     Text(playback.item.title, color = Palette.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     playback.item.subtitle?.let { Text(it, color = Palette.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
-                OverlayButton(MiptvIcons.Close, "Fermer le lecteur", onClose, Modifier.testTag("close-player"))
+                OverlayButton(MiptvIcons.Close, tr.closePlayer, onClose, Modifier.testTag("close-player"))
             }
         }
         if (playback.failed || (playback.ended && onNext != null)) {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(playback.status, color = Color.White, modifier = Modifier.testTag("player-status"))
-                if (playback.failed) PillButton("Réessayer", playback::retry, Modifier.testTag("retry"), height = 40.dp)
-                if (playback.ended && onNext != null) PillButton("Épisode suivant", onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, height = 40.dp)
+                if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp)
+                if (playback.ended && onNext != null) PillButton(tr.nextEpisode, onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, height = 40.dp)
             }
         }
     }
@@ -471,7 +471,7 @@ fun FullscreenPlayer(
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("fullscreen-player")) {
         PlayerSurface(playback, fullscreen = true, onFullscreen = { if (!it) onExit() }, modifier = Modifier.fillMaxSize())
         Row(Modifier.fillMaxWidth().align(Alignment.TopStart).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onExit, modifier = Modifier.testTag("exit-fullscreen")) { Icon(MiptvIcons.Back, contentDescription = "Quitter le plein écran", tint = Color.White) }
+            IconButton(onClick = onExit, modifier = Modifier.testTag("exit-fullscreen")) { Icon(MiptvIcons.Back, contentDescription = tr.exitFullscreen, tint = Color.White) }
             Column(Modifier.weight(1f)) {
                 Text(playback.item.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 playback.item.subtitle?.let { Text(it, color = Palette.Muted, fontSize = 13.sp, maxLines = 1) }
@@ -480,8 +480,8 @@ fun FullscreenPlayer(
         if (playback.failed || (playback.ended && onNext != null)) {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(playback.status, color = Color.White)
-                if (playback.failed) PillButton("Réessayer", playback::retry, height = 40.dp)
-                if (playback.ended && onNext != null) PillButton("Épisode suivant", onNext, icon = MiptvIcons.Next, height = 40.dp)
+                if (playback.failed) PillButton(tr.retry, playback::retry, height = 40.dp)
+                if (playback.ended && onNext != null) PillButton(tr.nextEpisode, onNext, icon = MiptvIcons.Next, height = 40.dp)
             }
         }
     }
@@ -506,7 +506,7 @@ private fun LiveFullscreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    OverlayButton(MiptvIcons.Back, "Quitter le plein écran", onExit, Modifier.testTag("exit-fullscreen"))
+                    OverlayButton(MiptvIcons.Back, tr.exitFullscreen, onExit, Modifier.testTag("exit-fullscreen"))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(playback.item.title, color = Palette.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (nowNext != null) Text("${nowNext.now.title} · ${formatSlot(nowNext.now)}", color = Palette.Muted, fontSize = 13.sp, maxLines = 1,
@@ -517,11 +517,11 @@ private fun LiveFullscreen(
                 Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(56.dp), verticalAlignment = Alignment.CenterVertically) {
                     val dim = Palette.Ink.copy(alpha = 0.6f)
                     // Missing neighbours keep their place so pause stays in the middle.
-                    if (onPreviousChannel != null) OverlayButton(MiptvIcons.Previous, "Chaîne précédente", onPreviousChannel, Modifier.testTag("previous-channel"), 56.dp, dim)
+                    if (onPreviousChannel != null) OverlayButton(MiptvIcons.Previous, tr.previousChannel, onPreviousChannel, Modifier.testTag("previous-channel"), 56.dp, dim)
                     else Spacer(Modifier.size(56.dp))
-                    if (playback.ready || playback.playing) OverlayButton(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, if (playback.playing) "Pause" else "Lecture", playback::togglePlay, size = 72.dp, background = dim)
+                    if (playback.ready || playback.playing) OverlayButton(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, if (playback.playing) tr.pause else tr.play, playback::togglePlay, size = 72.dp, background = dim)
                     else Spacer(Modifier.size(72.dp))
-                    if (onNextChannel != null) OverlayButton(MiptvIcons.Next, "Chaîne suivante", onNextChannel, Modifier.testTag("next-channel"), 56.dp, dim)
+                    if (onNextChannel != null) OverlayButton(MiptvIcons.Next, tr.nextChannel, onNextChannel, Modifier.testTag("next-channel"), 56.dp, dim)
                     else Spacer(Modifier.size(56.dp))
                 }
                 Row(
@@ -534,9 +534,9 @@ private fun LiveFullscreen(
                         nextLabel(nowNext)?.let { Text(it, color = Palette.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)) }
                             ?: Spacer(Modifier.weight(1f))
                     } else Spacer(Modifier.weight(1f))
-                    OverlayButton(if (playback.muted) MiptvIcons.Muted else MiptvIcons.Volume, if (playback.muted) "Rétablir le son" else "Couper le son", playback::toggleMute)
-                    if (onGuide != null) OverlayButton(MiptvIcons.Calendar, "Guide des programmes", onGuide, Modifier.testTag("fullscreen-guide"))
-                    OverlayButton(MiptvIcons.ExitFullscreen, "Quitter le plein écran", onExit)
+                    OverlayButton(if (playback.muted) MiptvIcons.Muted else MiptvIcons.Volume, if (playback.muted) tr.unmute else tr.mute, playback::toggleMute)
+                    if (onGuide != null) OverlayButton(MiptvIcons.Calendar, tr.programmeGuide, onGuide, Modifier.testTag("fullscreen-guide"))
+                    OverlayButton(MiptvIcons.ExitFullscreen, tr.exitFullscreen, onExit)
                 }
             }
         }

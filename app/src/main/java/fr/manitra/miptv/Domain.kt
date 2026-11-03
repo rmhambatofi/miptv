@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.Flow
 data class Category(val id: String, val name: String) {
     companion object {
         /** Pseudo-categories shown before the imported groups. */
-        val ALL = Category("all", "Toutes")
-        val FAVORITES = Category("favorites", "Favoris")
+        val ALL: Category get() = Category("all", tr.allCategory)
+        val FAVORITES: Category get() = Category("favorites", tr.favorites)
     }
 }
 
@@ -158,7 +158,7 @@ data class PlaybackProgress(val itemId: String, val positionMs: Long, val durati
     val finished: Boolean get() = durationMs > 0 && positionMs >= durationMs * 95 / 100
 }
 
-/** Outcome of a read that may need the provider: the value, or a French message. */
+/** Outcome of a read that may need the provider: the value, or a message in the current language. */
 sealed interface Fetched<out T> {
     data class Success<T>(val value: T) : Fetched<T>
     data class Failure(val message: String) : Fetched<Nothing>
@@ -183,7 +183,7 @@ interface ChannelRepository {
     fun count(query: ChannelQuery): Flow<Int>
     suspend fun channel(id: String): Channel?
     suspend fun addSource(name: String, location: String, kind: SourceKind): ImportResult
-    /** Connection test before saving: the account as the provider describes it, or the French reason it cannot be used. */
+    /** Connection test before saving: the account as the provider describes it, or the reason it cannot be used. */
     suspend fun checkXtreamAccount(account: XtreamAccount): Fetched<XtreamAccountInfo>
     /** Checks the account, imports live channels, films and series; the password is stored encrypted. */
     suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult
@@ -331,24 +331,23 @@ data class XtreamAccountInfo(
     val connectionsExhausted: Boolean
         get() = maxConnections != null && maxConnections > 0 && activeConnections != null && activeConnections >= maxConnections
 
-    /** French reason the account cannot be used, or null when it can. Refused credentials never get here: they throw. */
+    /** Reason, in the current language, the account cannot be used, or null when it can. Refused credentials never get here: they throw. */
     fun blocker(nowMs: Long = System.currentTimeMillis()): String? = when {
-        status.equals("Banned", ignoreCase = true) || status.equals("Disabled", ignoreCase = true) -> "Compte désactivé par le fournisseur."
+        status.equals("Banned", ignoreCase = true) || status.equals("Disabled", ignoreCase = true) -> tr.accountDisabled
         status.equals("Expired", ignoreCase = true) || (expiresAt != null && expiresAt <= nowMs) ->
-            if (expiresAt != null) "Compte expiré le ${frenchDate(expiresAt)}." else "Compte expiré."
+            if (expiresAt != null) tr.accountExpiredOn(formatDate(expiresAt)) else tr.accountExpired
         else -> null
     }
 
-    /** French warning when every connection the account allows is already in use. */
+    /** Warning, in the current language, when every connection the account allows is already in use. */
     fun connectionsMessage(): String? =
-        if (connectionsExhausted) "Nombre maximal de connexions atteint ($activeConnections/$maxConnections)." else null
+        if (connectionsExhausted) tr.maxConnectionsReached(activeConnections ?: 0, maxConnections ?: 0) else null
 }
 
-fun frenchDate(epochMs: Long): String = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE).format(java.util.Date(epochMs))
 
 /**
  * Xtream Codes provider access over `player_api.php`. Implementations never log the account or echo it in an error:
- * [describeXtreamError] turns failures into French messages. Ids are prefixed by [sourceId] (see `XtreamIds`).
+ * [describeXtreamError] turns failures into messages in the current language. Ids are prefixed by [sourceId] (see `XtreamIds`).
  */
 interface XtreamClient {
     /** Checks the credentials; throws [XtreamException] when they are refused. */

@@ -154,7 +154,7 @@ class XtreamParser(private val sourceId: Long) {
             }
             val providerId = id?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEachElement
             val categoryId = XtreamIds.category(sourceId, kind, providerId)
-            out.putIfAbsent(categoryId, Category(categoryId, name?.trim()?.ifEmpty { null } ?: "Catégorie $providerId"))
+            out.putIfAbsent(categoryId, Category(categoryId, name?.trim()?.ifEmpty { null } ?: tr.categoryFallback(providerId)))
         }
         out.values.toList()
     }
@@ -185,7 +185,7 @@ class XtreamParser(private val sourceId: Long) {
             if (!seen.add(id)) return@forEachElement
             out += Channel(
                 id = XtreamIds.channel(sourceId, id),
-                name = name?.trim()?.ifEmpty { null } ?: "Chaîne $id",
+                name = name?.trim()?.ifEmpty { null } ?: tr.channelFallback(id),
                 categoryId = categoryIdOf(categoryId, categoryIds, XtreamIds.Kind.LIVE),
                 streamUrl = XtreamStreamRef(sourceId, XtreamStreamRef.Kind.LIVE, id, extension).format(),
                 logoUrl = icon.urlOrNull(),
@@ -382,7 +382,7 @@ class XtreamParser(private val sourceId: Long) {
                 seriesId = series.id,
                 season = seasonNumber,
                 number = episodeNumber,
-                title = title?.trim()?.ifEmpty { null } ?: "Épisode $episodeNumber",
+                title = title?.trim()?.ifEmpty { null } ?: tr.episodeFallback(episodeNumber),
                 sourceId = sourceId,
                 episodeId = episodeId,
                 containerExtension = extension.extensionOr("mp4"),
@@ -403,7 +403,7 @@ class XtreamParser(private val sourceId: Long) {
             Season(
                 seriesId = seriesId,
                 number = number,
-                name = meta?.name?.trim()?.ifEmpty { null } ?: "Saison $number",
+                name = meta?.name?.trim()?.ifEmpty { null } ?: tr.seasonFallback(number),
                 episodeCount = counts[number] ?: meta?.episodeCount ?: 0,
                 posterUrl = meta?.cover.urlOrNull()
             )
@@ -457,7 +457,7 @@ class XtreamParser(private val sourceId: Long) {
 
     private fun MovieFields.toMovie(id: Long) = Movie(
         id = XtreamIds.movie(sourceId, id),
-        title = title ?: "Film $id",
+        title = title ?: tr.movieFallback(id),
         sourceId = sourceId,
         streamId = id,
         categoryId = categoryIdOf(categoryId, categoryIds, XtreamIds.Kind.MOVIE),
@@ -508,7 +508,7 @@ class XtreamParser(private val sourceId: Long) {
 
     private fun SeriesFields.toSeries(id: Long) = Series(
         id = XtreamIds.series(sourceId, id),
-        title = title ?: "Série $id",
+        title = title ?: tr.seriesFallback(id),
         sourceId = sourceId,
         seriesId = id,
         categoryId = categoryIdOf(categoryId, categoryIds, XtreamIds.Kind.SERIES),
@@ -546,8 +546,8 @@ class XtreamParser(private val sourceId: Long) {
     }
 
     companion object {
-        const val REFUSED = "Identifiants refusés. Vérifiez l'identifiant et le mot de passe."
-        const val UNEXPECTED = "Réponse inattendue : ce serveur ne semble pas être un portail Xtream."
+        val REFUSED: String get() = tr.credentialsRefused
+        val UNEXPECTED: String get() = tr.notXtreamPortal
 
         fun parseRating(text: String?): Double? = text?.trim()?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0.0 && it <= 10.0 }
 
@@ -631,7 +631,7 @@ class HttpXtreamClient : XtreamClient {
 /** Normalises the account and asks the provider about it; a blocked account (expired, disabled) is a failure. */
 suspend fun XtreamClient.check(account: XtreamAccount): Fetched<XtreamAccountInfo> {
     val server = normalizeXtreamServer(account.server)
-    if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return Fetched.Failure("Serveur, identifiant et mot de passe sont requis.")
+    if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return Fetched.Failure(tr.credentialsRequired)
     return try {
         val info = account(account.copy(server = server, username = account.username.trim()))
         info.blocker()?.let { Fetched.Failure(it) } ?: Fetched.Success(info)
@@ -640,19 +640,19 @@ suspend fun XtreamClient.check(account: XtreamAccount): Fetched<XtreamAccountInf
     }
 }
 
-/** French message for a failed provider call. Never echoes the server, the user name or the password. */
+/** Message, in the current language, for a failed provider call. Never echoes the server, the user name or the password. */
 fun describeXtreamError(error: Throwable): String = when (error) {
     is XtreamException -> error.message ?: XtreamParser.UNEXPECTED
     is JsonSyntaxException -> XtreamParser.UNEXPECTED
     is HttpStatusException -> when (error.code) {
-        401, 403 -> "Identifiants refusés par le serveur (HTTP ${error.code})."
-        404 -> "API Xtream introuvable à cette adresse (HTTP 404). Vérifiez le serveur et le port."
-        429 -> "Trop de requêtes : le serveur demande d'attendre avant de réessayer."
-        in 500..599 -> "Le serveur du fournisseur est en difficulté (HTTP ${error.code})."
-        else -> "Le serveur a répondu HTTP ${error.code}."
+        401, 403 -> tr.credentialsRefusedHttp(error.code)
+        404 -> tr.xtreamApiNotFound
+        429 -> tr.tooManyRequests
+        in 500..599 -> tr.providerServerError(error.code)
+        else -> tr.serverHttp(error.code)
     }
     is PlaylistException, is UnknownHostException, is SocketTimeoutException, is SSLException,
     is IllegalArgumentException, is MalformedURLException -> describeImportError(error)
-    is IOException -> "Lecture du catalogue impossible."
-    else -> "Connexion au fournisseur impossible."
+    is IOException -> tr.catalogReadFailed
+    else -> tr.providerConnectionFailed
 }

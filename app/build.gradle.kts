@@ -20,6 +20,8 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     testOptions.unitTests.isReturnDefaultValues = true
+    // Local tests check the French texts, the reference language: their JVM runs in French whatever the machine.
+    testOptions.unitTests.all { it.systemProperty("user.language", "fr"); it.systemProperty("user.country", "FR") }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
