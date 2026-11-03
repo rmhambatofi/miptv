@@ -160,6 +160,9 @@ object SpanishTexts : Texts {
     override val sourcesIntro: String = "Una lista M3U/M3U8 por dirección o archivo local, o un proveedor Xtream Codes con tus credenciales. Todo se queda en el dispositivo; la contraseña está cifrada."
     override fun configuredSources(count: Int): String = "Fuentes configuradas · $count"
     override val noSourceYet: String = "Ninguna fuente por ahora."
+
+    override val language: String = "Idioma"
+    override fun systemLanguage(name: String): String = "Idioma del dispositivo ($name)"
     override val m3uPlaylist: String = "Lista M3U"
     override val xtreamProvider: String = "Proveedor Xtream"
     override val newSource: String = "Nueva fuente"

@@ -64,8 +64,9 @@ import kotlinx.coroutines.flow.Flow
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // A change of language recreates the activity (locale is not in configChanges): the texts follow it here.
-        I18n.language = Language.of(resources.configuration)
+        // A change of language recreates the activity (locale is not in configChanges): the texts follow it here,
+        // the language chosen in the settings first.
+        I18n.apply(this, resources.configuration)
         enableEdgeToEdge()
         setContent {
             val app = application as MiptvApplication

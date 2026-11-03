@@ -101,7 +101,7 @@ La recherche est locale et insensible à la casse et aux accents (« chaine » t
 
 ### Langues
 
-L'interface existe en **français**, **anglais** et **espagnol**. Elle suit la langue du téléphone ; toute autre langue affiche l'anglais. Sur Android 13 et plus, la langue de l'application se choisit aussi à part, dans Paramètres › Applications › miptv › Langue (`res/xml/locales_config.xml`). Les dates, jours, durées et notes suivent les conventions de la langue (« 01/01/2025 » ou « Jan 1, 2025 », « 7,6 » ou « 7.6 »).
+L'interface existe en **français**, **anglais** et **espagnol**. Par défaut elle suit la langue du téléphone ; toute autre langue affiche l'anglais. L'écran des réglages (roue dentée) propose une carte **Langue** : « Langue de l'appareil » (le défaut) ou une langue imposée, appliquée aussitôt et conservée quelle que soit la langue du téléphone. Sur Android 13 et plus, ce choix est la langue de l'application du système (`LocaleManager`), la même que dans Paramètres › Applications › miptv › Langue (`res/xml/locales_config.xml`) ; avant, il est gardé dans les préférences de l'application. Les dates, jours, durées et notes suivent les conventions de la langue (« 01/01/2025 » ou « Jan 1, 2025 », « 7,6 » ou « 7.6 »).
 
 Les textes déjà enregistrés (dernière erreur d'une source, noms de catégories de repli comme « Sans catégorie ») gardent la langue du moment où ils ont été produits, jusqu'à la prochaine actualisation de la source.
 
@@ -186,7 +186,7 @@ Un seul module `app`, en MVVM pragmatique, sans Hilt, Retrofit ni OkHttp. `Miptv
 - `GuideScreens.kt` : ligne « maintenant / ensuite » (`NowLine`), bouton Guide, feuille guide (`guideSection`), groupe Programmes de la Recherche, bloc guide de la fiche source (`SourceGuide`).
 - `Preview.kt` : lecteur Media3 (`Playback`, `PlayerSurface`, `LivePlayer`, `Preview`, `VodPlayer`, `FullscreenPlayer`), résolution de l'URL au démarrage et à chaque « Réessayer », en-têtes HTTP (`User-Agent`, `Referer`), délai de chargement borné (`LoadingWatch`), sauvegarde de la position, messages d'erreur.
 - `SourcesScreen.kt` : formulaires M3U et Xtream, test de connexion, sélecteur SAF, liste des sources.
-- `I18n.kt` : `Language` (français, anglais, espagnol ; anglais par défaut), langue courante (`I18n`, réglée par l'application et l'activité d'après leur configuration), accès aux textes (`tr`), dates dans les conventions de la langue. `Texts.kt` : interface de tous les textes de l'application ; `TextsFr.kt`, `TextsEn.kt`, `TextsEs.kt` : une implémentation par langue. Ajouter une langue revient à implémenter `Texts` et à l'inscrire dans `Language` et `locales_config.xml` : le compilateur signale tout texte manquant.
+- `I18n.kt` : `Language` (français, anglais, espagnol ; anglais par défaut), langue choisie dans les réglages (`LanguageChoice`), langue courante (`I18n`, réglée par l'application et l'activité : le choix des réglages, sinon leur configuration), accès aux textes (`tr`), dates dans les conventions de la langue. `Texts.kt` : interface de tous les textes de l'application ; `TextsFr.kt`, `TextsEn.kt`, `TextsEs.kt` : une implémentation par langue. Ajouter une langue revient à implémenter `Texts` et à l'inscrire dans `Language` et `locales_config.xml` : le compilateur signale tout texte manquant.
 - `Design.kt` : palette, icônes (`MiptvIcons`), en-têtes, barre d'onglets, boutons pilule, ligne de progression, badge « DIRECT ». `Splash.kt` : écran d'ouverture et son.
 
 ## Choix techniques
@@ -248,7 +248,7 @@ Aucun test ne dépend du réseau. Les réponses Xtream enregistrées et anonymis
 - programmes qui se chevauchent (`ResolveOverlapsTest`) ;
 - ViewModel : catalogue, sources, Xtream, guide (`LiveViewModelTest`, `XtreamViewModelTest`, `GuideViewModelTest`) ;
 - mise en forme et messages d'erreur de lecture (`FormatTest`, `PlaybackErrorTest`) ;
-- langues : choix de la langue, textes anglais et espagnols, aucun texte vide (`I18nTest`).
+- langues : choix de la langue, langue enregistrée, textes anglais et espagnols, aucun texte vide (`I18nTest`).
 
 Les tests locaux vérifient les textes français : leur JVM tourne en français quelle que soit la machine (`testOptions` de `app/build.gradle.kts`), et `MiptvTestRunner` règle aussi les tests instrumentés en français.
 
