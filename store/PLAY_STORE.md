@@ -1,6 +1,6 @@
 # Publier miptv sur Google Play
 
-Guide de la première publication (version 1.0.0, `versionCode` 6). Les textes sont prêts à copier dans la Play Console.
+Guide de la première publication (version 1.0.0, `versionCode` 6) et des mises à jour (voir § 8 ; version actuelle 1.1.0, `versionCode` 7). Les textes sont prêts à copier dans la Play Console.
 
 ## 1. Compiler le bundle
 
@@ -56,12 +56,13 @@ Fichiers à envoyer :
 > • Recherche dans tout le catalogue
 > • Lecture en plein écran, écran maintenu allumé pendant la lecture
 > • Grandes playlists : des dizaines de milliers de chaînes sans ralentissement
+> • Interface en français, anglais et espagnol, au choix dans les Réglages
 >
 > CONFIDENTIALITÉ
 > • Aucun compte, aucune publicité, aucun suivi
 > • Tout reste sur votre téléphone ; les mots de passe sont chiffrés
 
-**Traductions** : `store/listing-translations.csv` contient le nom, la description courte et la description complète en fr-FR, en-US, es-ES, pt-BR, de-DE et it-IT. À importer par *Fiche Play Store par défaut → Importez des traductions avec l'IA → Importer un fichier*. Chaque traduction précise que l'interface n'existe qu'en français.
+**Traductions** : `store/listing-translations.csv` contient le nom, la description courte et la description complète en fr-FR, en-US, es-ES, pt-BR, de-DE et it-IT. À importer par *Fiche Play Store par défaut → Importez des traductions avec l'IA → Importer un fichier*. Chaque traduction précise les langues de l'interface (français, anglais, espagnol).
 
 **Graphismes** (dans `store/graphics/`) :
 
@@ -121,7 +122,38 @@ En cas de refus, la Console indique la règle invoquée ; on peut faire appel en
 1. *Tests → Test interne* : envoyer l'AAB, s'ajouter comme testeur, installer depuis le lien et vérifier (ajout de source, lecture, guide, favoris).
 2. *Tests → Test fermé* : même bundle, 12 testeurs minimum pendant 14 jours (comptes personnels récents).
 3. *Production* : demander l'accès à la production (questionnaire sur le test fermé), puis publier, de préférence en déploiement progressif (20 %, puis 100 %).
-4. Pays : tous, ou commencer par la France / Madagascar / pays francophones (l'interface est en français uniquement).
+4. Pays : tous (interface en français, anglais et espagnol ; anglais pour toute autre langue du téléphone).
+
+## 8. Publier une mise à jour
+
+1. Incrémenter `versionCode` (obligatoire : la Console refuse un numéro déjà utilisé) et `versionName` dans `app/build.gradle.kts`.
+2. Fusionner dans `main` : le workflow « Android phone » construit le bundle signé. Télécharger l'artefact `android-phone-build` (`app-release.aab` et `mapping.txt`). En local : `./gradlew bundleRelease`.
+3. Play Console → piste concernée (*Production*, *Test fermé* ou *Test interne*) → *Créer une version* → importer l'AAB.
+4. Notes de version dans chaque langue de la fiche, puis *Vérifier la version* et déployer, de préférence progressivement.
+5. Si la fiche change (texte, captures), mettre à jour `store/listing-translations.csv` et le réimporter ; les modifications de fiche passent aussi en relecture.
+
+Notes de la version 1.1.0 :
+
+```
+<fr-FR>
+Choix de la langue de l'interface (français, anglais, espagnol) dans le nouvel écran Réglages.
+</fr-FR>
+<en-US>
+Choose the app language (French, English, Spanish) in the new Settings screen.
+</en-US>
+<es-ES>
+Elige el idioma de la aplicación (francés, inglés, español) en la nueva pantalla Ajustes.
+</es-ES>
+<pt-BR>
+Escolha o idioma do app (francês, inglês, espanhol) na nova tela « Settings » (interface em inglês).
+</pt-BR>
+<de-DE>
+Wähle die App-Sprache (Französisch, Englisch, Spanisch) im neuen Bildschirm „Settings“ (Oberfläche auf Englisch).
+</de-DE>
+<it-IT>
+Scegli la lingua dell'app (francese, inglese, spagnolo) nella nuova schermata « Settings » (interfaccia in inglese).
+</it-IT>
+```
 
 ## Checklist
 

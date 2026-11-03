@@ -14,8 +14,8 @@ android {
         applicationId = "fr.manitra.miptv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.0"
+        versionCode = 7
+        versionName = "1.1.0"
         testInstrumentationRunner = "fr.manitra.miptv.MiptvTestRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
