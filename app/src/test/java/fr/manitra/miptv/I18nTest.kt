@@ -23,6 +23,17 @@ class I18nTest {
     }
 
     @Test
+    fun aStoredChoiceGivesItsLanguage() {
+        assertEquals(Language.FRENCH, Language.fromTag("fr"))
+        assertEquals(Language.SPANISH, Language.fromTag("es-MX"))
+        assertEquals(Language.ENGLISH, Language.fromTag("en-GB"))
+        // No choice, or a language the app does not offer: the device language applies.
+        assertEquals(null, Language.fromTag(null))
+        assertEquals(null, Language.fromTag(""))
+        assertEquals(null, Language.fromTag("de"))
+    }
+
+    @Test
     fun localTestsRunInFrench() {
         assertEquals(Language.FRENCH, I18n.language)
         assertEquals("Accueil", Destination.HOME.label)

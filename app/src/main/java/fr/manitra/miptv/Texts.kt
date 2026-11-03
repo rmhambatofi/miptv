@@ -18,6 +18,8 @@ interface Texts {
     val series: String
     val search: String
     val sources: String
+    /** Title of the settings screen (sources, language), behind the gear. */
+    val settings: String
     val channels: String
     val programmes: String
     val categories: String
@@ -164,6 +166,10 @@ interface Texts {
     val sourcesIntro: String
     fun configuredSources(count: Int): String
     val noSourceYet: String
+
+    /** Language picker of the settings. */
+    val language: String
+    fun systemLanguage(name: String): String
     val m3uPlaylist: String
     val xtreamProvider: String
     val newSource: String

@@ -64,8 +64,9 @@ import kotlinx.coroutines.flow.Flow
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // A change of language recreates the activity (locale is not in configChanges): the texts follow it here.
-        I18n.language = Language.of(resources.configuration)
+        // A change of language recreates the activity (locale is not in configChanges): the texts follow it here,
+        // the language chosen in the settings first.
+        I18n.apply(this, resources.configuration)
         enableEdgeToEdge()
         setContent {
             val app = application as MiptvApplication
@@ -252,7 +253,7 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             when {
                 state.sourcesOpen -> {
-                    BackHeader(tr.sources, { actions.openSources(false) }, "close-sources")
+                    BackHeader(tr.settings, { actions.openSources(false) }, "close-sources")
                     ContentList(scrollState, padded = true) { sourcesSection(state, actions.sources) }
                 }
                 guideOpen -> ContentList(scrollState, padded = true) {
@@ -376,7 +377,7 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
             Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
             Text(tr.home, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
             IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
-                Icon(MiptvIcons.Settings, contentDescription = tr.sources)
+                Icon(MiptvIcons.Settings, contentDescription = tr.settings)
             }
         }
     }

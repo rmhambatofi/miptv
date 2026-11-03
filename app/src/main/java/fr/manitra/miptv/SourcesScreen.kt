@@ -1,5 +1,8 @@
 package fr.manitra.miptv
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -18,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -38,10 +44,12 @@ class SourceActions(
 )
 
 /**
- * Sources: an M3U playlist by URL or local file (SAF), or an Xtream provider by server, user name and password.
+ * Settings screen: the language of the interface, then the sources: an M3U playlist by URL or local file (SAF), or an Xtream provider by server, user name and password.
  * Locations are shown host-only and the password is masked; neither is ever logged.
  */
 fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
+    item(key = "language") { LanguageCard() }
+    item { Text(tr.sources, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     item { Text(tr.sourcesIntro, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     item { AddSourceCard(state, actions) }
     item {
@@ -58,6 +66,45 @@ fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
     item { Text(tr.configuredSources(state.sources.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     if (state.sources.isEmpty()) item { Text(tr.noSourceYet, modifier = Modifier.testTag("no-sources")) }
     items(state.sources, key = { "source-${it.id}" }) { source -> SourceCard(source, state.importStatus.running, actions.guide, { actions.refresh(source.id) }, { actions.remove(source.id) }) }
+}
+
+/**
+ * Language of the interface: the device's (the default) or one chosen here, which then holds whatever the device
+ * language. Choosing one shows the app again in it (see [LanguageChoice]).
+ */
+@Composable
+private fun LanguageCard() {
+    val context = LocalContext.current
+    val chosen = remember { LanguageChoice.get(context) }
+    val device = remember { LanguageChoice.device(context) }
+    val options: List<Pair<Language?, String>> = listOf(null to tr.systemLanguage(device.nativeName)) + Language.entries.map { it to it.nativeName }
+    Card(Modifier.fillMaxWidth().testTag("language-card")) {
+        Column(Modifier.padding(vertical = 8.dp).selectableGroup()) {
+            Text(tr.language, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            options.forEach { (language, label) ->
+                val selected = language == chosen
+                Row(
+                    Modifier.fillMaxWidth()
+                        .selectable(selected = selected, role = Role.RadioButton, onClick = {
+                            if (!selected) context.findActivity()?.let { LanguageChoice.set(it, language) }
+                        })
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .testTag("language-${language?.tag ?: "system"}"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = selected, onClick = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text(label)
+                }
+            }
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private enum class SourceForm {

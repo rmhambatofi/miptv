@@ -21,13 +21,13 @@ Version 1.0.0 (`versionCode` 6), cible Android 16 (`targetSdk` 36). La publicati
 
 ### Navigation
 
-Cinq onglets en bas de l'écran : **Accueil**, **TV**, **Films**, **Séries** et **Recherche**. Les sources se gèrent depuis l'icône engrenage (ou le bouton « Sources » de l'Accueil). Retour ferme d'abord le plein écran, le guide, une fiche ou l'écran Sources, puis remonte les niveaux de l'onglet TV et revient enfin à l'Accueil. Au premier lancement, un écran d'ouverture d'environ 2 s (logo, égaliseur, son synthétisé) précède l'Accueil.
+Cinq onglets en bas de l'écran : **Accueil**, **TV**, **Films**, **Séries** et **Recherche**. L'icône engrenage ouvre l'écran **Réglages** (langue de l'interface, puis gestion des sources) ; le bouton « Sources » de l'Accueil y mène aussi. Retour ferme d'abord le plein écran, le guide, une fiche ou l'écran Réglages, puis remonte les niveaux de l'onglet TV et revient enfin à l'Accueil. Au premier lancement, un écran d'ouverture d'environ 2 s (logo, égaliseur, son synthétisé) précède l'Accueil.
 
 Le thème est sombre (fond `#0B0D12`, surface `#181C26`, accent `#FF647C`), avec une barre d'onglets à pastille et des icônes vectorielles maison. L'interface tient compte des barres système et du clavier.
 
 ### Ajouter une source
 
-L'écran Sources propose deux formulaires.
+L'écran Réglages propose, sous le choix de la langue, deux formulaires de source.
 
 - **Playlist M3U** : une adresse `http(s)` ou un fichier local `.m3u` / `.m3u8` choisi dans le sélecteur de documents (la permission de lecture est conservée). Un champ facultatif « Guide des programmes (XMLTV) » accepte un fichier `.xml` ou `.xml.gz` ; sinon, l'adresse du guide vient de l'en-tête de la playlist (`url-tvg`, `x-tvg-url` ou `tvg-url`).
 - **Fournisseur Xtream** : serveur, identifiant et mot de passe (masqué). « Tester la connexion » décrit le compte : statut, date de fin, connexions autorisées, formats. L'ajout vérifie d'abord le compte (expiré, désactivé ou connexions saturées sont refusés avec un message), puis importe chaînes, films et séries.
@@ -101,7 +101,7 @@ La recherche est locale et insensible à la casse et aux accents (« chaine » t
 
 ### Langues
 
-L'interface existe en **français**, **anglais** et **espagnol**. Elle suit la langue du téléphone ; toute autre langue affiche l'anglais. Sur Android 13 et plus, la langue de l'application se choisit aussi à part, dans Paramètres › Applications › miptv › Langue (`res/xml/locales_config.xml`). Les dates, jours, durées et notes suivent les conventions de la langue (« 01/01/2025 » ou « Jan 1, 2025 », « 7,6 » ou « 7.6 »).
+L'interface existe en **français**, **anglais** et **espagnol**. Par défaut elle suit la langue du téléphone ; toute autre langue affiche l'anglais. L'écran Réglages (roue dentée) commence par une carte **Langue** : « Langue de l'appareil » (le défaut) ou une langue imposée, appliquée aussitôt et conservée quelle que soit la langue du téléphone. Sur Android 13 et plus, ce choix est la langue de l'application du système (`LocaleManager`), la même que dans Paramètres › Applications › miptv › Langue (`res/xml/locales_config.xml`) ; avant, il est gardé dans les préférences de l'application. Les dates, jours, durées et notes suivent les conventions de la langue (« 01/01/2025 » ou « Jan 1, 2025 », « 7,6 » ou « 7.6 »).
 
 Les textes déjà enregistrés (dernière erreur d'une source, noms de catégories de repli comme « Sans catégorie ») gardent la langue du moment où ils ont été produits, jusqu'à la prochaine actualisation de la source.
 
@@ -179,14 +179,14 @@ Un seul module `app`, en MVVM pragmatique, sans Hilt, Retrofit ni OkHttp. `Miptv
 
 ### Interface
 
-- `LiveViewModel.kt` : `LiveState` (catégories, favoris, compteurs, requêtes, fiches, `PlayItem` en lecture, positions, rangées récentes, test de connexion, horloge, « maintenant / ensuite », `GuideSheet`, résultats de recherche), listes paginées mises en cache dans le ViewModel, statut d'importation, plein écran, « Épisode suivant », rechargement du guide d'un favori Xtream, état restauré par `SavedStateHandle` (onglet, catégories, recherche, filtres, écran Sources) ; mise en forme des heures et des jours (`formatTime`, `dayLabel`, `guideDaysFrom`).
-- `MainActivity.kt` : cinq onglets, Accueil, Recherche, écran Sources, lecteur unique hissé au-dessus des mises en page, plein écran (orientation et barres système) et gestion de Retour.
+- `LiveViewModel.kt` : `LiveState` (catégories, favoris, compteurs, requêtes, fiches, `PlayItem` en lecture, positions, rangées récentes, test de connexion, horloge, « maintenant / ensuite », `GuideSheet`, résultats de recherche), listes paginées mises en cache dans le ViewModel, statut d'importation, plein écran, « Épisode suivant », rechargement du guide d'un favori Xtream, état restauré par `SavedStateHandle` (onglet, catégories, recherche, filtres, écran Réglages) ; mise en forme des heures et des jours (`formatTime`, `dayLabel`, `guideDaysFrom`).
+- `MainActivity.kt` : cinq onglets, Accueil, Recherche, écran Réglages, lecteur unique hissé au-dessus des mises en page, plein écran (orientation et barres système) et gestion de Retour.
 - `TvScreens.kt` : les trois niveaux de l'onglet TV et la ligne de chaîne (`ChannelRow`).
 - `VodScreens.kt` : onglets Films et Séries, fiches, saisons et épisodes, rangées VOD de l'Accueil, groupes Films et Séries de la Recherche.
 - `GuideScreens.kt` : ligne « maintenant / ensuite » (`NowLine`), bouton Guide, feuille guide (`guideSection`), groupe Programmes de la Recherche, bloc guide de la fiche source (`SourceGuide`).
 - `Preview.kt` : lecteur Media3 (`Playback`, `PlayerSurface`, `LivePlayer`, `Preview`, `VodPlayer`, `FullscreenPlayer`), résolution de l'URL au démarrage et à chaque « Réessayer », en-têtes HTTP (`User-Agent`, `Referer`), délai de chargement borné (`LoadingWatch`), sauvegarde de la position, messages d'erreur.
-- `SourcesScreen.kt` : formulaires M3U et Xtream, test de connexion, sélecteur SAF, liste des sources.
-- `I18n.kt` : `Language` (français, anglais, espagnol ; anglais par défaut), langue courante (`I18n`, réglée par l'application et l'activité d'après leur configuration), accès aux textes (`tr`), dates dans les conventions de la langue. `Texts.kt` : interface de tous les textes de l'application ; `TextsFr.kt`, `TextsEn.kt`, `TextsEs.kt` : une implémentation par langue. Ajouter une langue revient à implémenter `Texts` et à l'inscrire dans `Language` et `locales_config.xml` : le compilateur signale tout texte manquant.
+- `SourcesScreen.kt` : écran Réglages, choix de la langue, formulaires M3U et Xtream, test de connexion, sélecteur SAF, liste des sources.
+- `I18n.kt` : `Language` (français, anglais, espagnol ; anglais par défaut), langue choisie dans les réglages (`LanguageChoice`), langue courante (`I18n`, réglée par l'application et l'activité : le choix des réglages, sinon leur configuration), accès aux textes (`tr`), dates dans les conventions de la langue. `Texts.kt` : interface de tous les textes de l'application ; `TextsFr.kt`, `TextsEn.kt`, `TextsEs.kt` : une implémentation par langue. Ajouter une langue revient à implémenter `Texts` et à l'inscrire dans `Language` et `locales_config.xml` : le compilateur signale tout texte manquant.
 - `Design.kt` : palette, icônes (`MiptvIcons`), en-têtes, barre d'onglets, boutons pilule, ligne de progression, badge « DIRECT ». `Splash.kt` : écran d'ouverture et son.
 
 ## Choix techniques
@@ -219,7 +219,7 @@ WorkManager porte deux travaux autour de `refreshStaleGuides`, tous deux en `KEE
 
 ### Un seul lecteur
 
-`PlayItem` décrit ce qui joue (chaîne, film ou épisode) ; changer d'onglet, de fiche ou ouvrir Sources arrête la lecture. Un fournisseur Xtream limite les connexions simultanées : l'aperçu et le plein écran ne doivent jamais ouvrir deux flux. `rememberPlayback` résout l'URL au démarrage et à chaque « Réessayer », prépare ExoPlayer avec la position de reprise et rapporte la position toutes les 10 s, à la fin et à la fermeture.
+`PlayItem` décrit ce qui joue (chaîne, film ou épisode) ; changer d'onglet, de fiche ou ouvrir Réglages arrête la lecture. Un fournisseur Xtream limite les connexions simultanées : l'aperçu et le plein écran ne doivent jamais ouvrir deux flux. `rememberPlayback` résout l'URL au démarrage et à chaque « Réessayer », prépare ExoPlayer avec la position de reprise et rapporte la position toutes les 10 s, à la fin et à la fermeture.
 
 ### Versions et manifeste
 
@@ -248,7 +248,7 @@ Aucun test ne dépend du réseau. Les réponses Xtream enregistrées et anonymis
 - programmes qui se chevauchent (`ResolveOverlapsTest`) ;
 - ViewModel : catalogue, sources, Xtream, guide (`LiveViewModelTest`, `XtreamViewModelTest`, `GuideViewModelTest`) ;
 - mise en forme et messages d'erreur de lecture (`FormatTest`, `PlaybackErrorTest`) ;
-- langues : choix de la langue, textes anglais et espagnols, aucun texte vide (`I18nTest`).
+- langues : choix de la langue, langue enregistrée, textes anglais et espagnols, aucun texte vide (`I18nTest`).
 
 Les tests locaux vérifient les textes français : leur JVM tourne en français quelle que soit la machine (`testOptions` de `app/build.gradle.kts`), et `MiptvTestRunner` règle aussi les tests instrumentés en français.
 

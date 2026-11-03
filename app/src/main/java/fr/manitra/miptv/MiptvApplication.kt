@@ -13,15 +13,15 @@ class MiptvApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        I18n.language = Language.of(resources.configuration)
+        I18n.apply(this, resources.configuration)
         val database = Room.databaseBuilder(this, MiptvDatabase::class.java, "miptv.db").addMigrations(*MIGRATIONS).build()
         repository = RoomChannelRepository(database, AndroidPlaylistLoader(this), HttpXtreamClient(), KeystoreSecretCipher())
         GuideRefreshWorker.schedule(this)
     }
 
-    /** The device language (or, on Android 13+, the language chosen for the app) changed while the process runs. */
+    /** The device language (or, on Android 13+, the language chosen for the app) changed while the process runs; a language chosen in the settings stays. */
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        I18n.language = Language.of(newConfig)
+        I18n.apply(this, newConfig)
     }
 }
