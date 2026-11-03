@@ -61,6 +61,8 @@ Fichiers à envoyer :
 > • Aucun compte, aucune publicité, aucun suivi
 > • Tout reste sur votre téléphone ; les mots de passe sont chiffrés
 
+**Traductions** : `store/listing-translations.csv` contient le nom, la description courte et la description complète en fr-FR, en-US, es-ES, pt-BR, de-DE et it-IT. À importer par *Fiche Play Store par défaut → Importez des traductions avec l'IA → Importer un fichier*. Chaque traduction précise que l'interface n'existe qu'en français.
+
 **Graphismes** (dans `store/graphics/`) :
 
 - Icône 512 × 512 : `icon-512.png`
@@ -91,7 +93,17 @@ Justification : rien n'est envoyé au développeur ni à un tiers choisi par le 
 
 ### Playlist pour le relecteur
 
-Le relecteur Google doit pouvoir voir l'app fonctionner. Fournir dans *Accès aux applications* une adresse de playlist M3U **légale et publique** (par exemple un fichier hébergé dans ce dépôt pointant vers des flux de test libres comme les flux de démonstration HLS d'Apple ou de Mux). Ne jamais fournir de playlist de chaînes protégées.
+`store/demo.m3u` contient 5 flux de test légaux (direct de démonstration Unified Streaming, Bip Bop d'Apple, courts métrages Blender sous Creative Commons), vérifiés en lecture dans la version release. Adresse à donner : `https://raw.githubusercontent.com/rmhambatofi/miptv/main/store/demo.m3u`.
+
+Dans *Accès aux applications* : « Toutes les fonctionnalités ou certaines d'entre elles sont limitées », puis une instruction :
+
+- Nom : `Playlist de démonstration`
+- Nom d'utilisateur / mot de passe : laisser vide (ou `aucun` si le champ est obligatoire)
+- Autres informations : voir le texte ci-dessous.
+
+> miptv est un lecteur : il ne contient aucun contenu. Pour le tester, ajoutez notre playlist de démonstration (flux de test publics et films libres de droits) : touchez « Sources » sur l'écran d'accueil, laissez « Playlist M3U » sélectionné, collez https://raw.githubusercontent.com/rmhambatofi/miptv/main/store/demo.m3u dans « Adresse de la playlist », puis touchez « Ajouter l'adresse ». Les chaînes apparaissent dans l'onglet TV. Le formulaire « Fournisseur Xtream » nécessite le compte personnel de l'utilisateur auprès de son propre fournisseur ; nous n'en fournissons pas, toutes les fonctions de lecture se testent avec la playlist.
+
+Ne jamais fournir de playlist de chaînes protégées.
 
 ## 6. Risque de refus propre aux lecteurs IPTV
 

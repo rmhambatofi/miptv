@@ -265,7 +265,7 @@ Les tests sur appareil réel, notamment avec un vrai fournisseur Xtream et un vr
 
 - `VALIDATION.md` : scénarios de validation sur appareil et résultats effectifs, sprint par sprint.
 - `SPRINT3.md`, `SPRINT4.md`, `SPRINT5.md` : plans et bilans des sprints.
-- `store/` : publication Google Play (`PLAY_STORE.md`), politique de confidentialité (`PRIVACY.md`) et graphismes de la fiche.
+- `store/` : publication Google Play (`PLAY_STORE.md`), politique de confidentialité (`PRIVACY.md`), traductions de la fiche (`listing-translations.csv`) et graphismes.
 
 Historique en bref :
 
