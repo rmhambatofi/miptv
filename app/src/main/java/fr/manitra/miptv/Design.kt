@@ -1,5 +1,6 @@
 package fr.manitra.miptv
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +8,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,17 +30,78 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The palette of the UX refresh: dark ground, one surface, a raised tone and the pink accent. */
+/** One set of colours of the UX refresh: a ground, one surface, a raised tone and the pink accent. */
+class ThemeColors(
+    val ink: Color, val panel: Color, val raised: Color, val accent: Color, val accentSoft: Color, val onAccent: Color,
+    val text: Color, val muted: Color, val dim: Color, val faded: Color, val link: Color,
+    /** The two ends of the tinted ground behind a hero without a picture. */
+    val heroStart: Color, val heroEnd: Color,
+    /** Centre of the opening screen's glow and the relief under its « IPTV ». */
+    val glow: Color, val emboss: Color,
+    val light: Boolean
+)
+
+val DarkColors = ThemeColors(
+    ink = Color(0xFF0B0D12), panel = Color(0xFF181C26), raised = Color(0xFF232838), accent = Color(0xFFFF647C), accentSoft = Color(0xFF3B2534),
+    onAccent = Color(0xFF330010), text = Color(0xFFF5F5FA), muted = Color(0xFFBCC1D0), dim = Color(0xFF5A6070), faded = Color(0xFF8A90A0),
+    link = Color(0xFFA8B8FF), heroStart = Color(0xFF412036), heroEnd = Color(0xFF192844), glow = Color(0xFF1B2130), emboss = Color(0xFF9AA0B4), light = false
+)
+
+/** The light variant: white surfaces, a darker accent that reads on them. */
+val LightColors = ThemeColors(
+    ink = Color(0xFFF6F7FB), panel = Color(0xFFFFFFFF), raised = Color(0xFFE4E7EF), accent = Color(0xFFCF3050), accentSoft = Color(0xFFFBE0E6),
+    onAccent = Color(0xFFFFFFFF), text = Color(0xFF14161D), muted = Color(0xFF5B6172), dim = Color(0xFFA3A8B6), faded = Color(0xFF8A8F9E),
+    link = Color(0xFF3550C8), heroStart = Color(0xFFF1CFD9), heroEnd = Color(0xFFCFDCF2), glow = Color(0xFFFFFFFF), emboss = Color(0xFFC9CDD8), light = true
+)
+
+/**
+ * The colours of the current theme ([ThemeChoice]), set by the activity. Held in a state, so whatever reads them
+ * (composition or drawing) follows a change of theme. The picture of a player stays dark: its overlays use [Video].
+ */
 object Palette {
-    val Ink = Color(0xFF0B0D12)
-    val Panel = Color(0xFF181C26)
-    val Raised = Color(0xFF232838)
-    val Accent = Color(0xFFFF647C)
-    val AccentSoft = Color(0xFF3B2534)
-    val Text = Color(0xFFF5F5FA)
-    val Muted = Color(0xFFBCC1D0)
-    val Dim = Color(0xFF5A6070)
-    val Link = Color(0xFFA8B8FF)
+    var colors: ThemeColors by mutableStateOf(DarkColors)
+
+    /** Over a video, whatever the theme. */
+    val Video: ThemeColors get() = DarkColors
+
+    val Ink get() = colors.ink
+    val Panel get() = colors.panel
+    val Raised get() = colors.raised
+    val Accent get() = colors.accent
+    val AccentSoft get() = colors.accentSoft
+    val Text get() = colors.text
+    val Muted get() = colors.muted
+    val Dim get() = colors.dim
+    val Link get() = colors.link
+}
+
+/** The theme of the interface: the device's, or light or dark whatever the device. */
+enum class ThemeMode(val key: String) {
+    SYSTEM("system"), LIGHT("light"), DARK("dark");
+
+    val label: String get() = when (this) { SYSTEM -> tr.themeSystem; LIGHT -> tr.themeLight; DARK -> tr.themeDark }
+
+    /** The colours of this mode on a device in dark mode or not. */
+    fun colors(deviceDark: Boolean): ThemeColors = when (this) { SYSTEM -> if (deviceDark) DarkColors else LightColors; LIGHT -> LightColors; DARK -> DarkColors }
+
+    companion object {
+        /** Dark until a theme is chosen: the look the app always had. */
+        val DEFAULT = DARK
+
+        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: DEFAULT
+    }
+}
+
+/** The theme chosen in the settings, kept in the app's preferences. */
+object ThemeChoice {
+    private const val PREFERENCES = "settings"
+    private const val KEY = "theme"
+
+    fun get(context: Context): ThemeMode = ThemeMode.fromKey(context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getString(KEY, null))
+
+    fun set(context: Context, mode: ThemeMode) {
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().putString(KEY, mode.key).apply()
+    }
 }
 
 /** Stroke icons drawn from the design's 24 × 24 paths; tinted like any [Icon]. */
@@ -161,15 +226,15 @@ fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, height: Dp = 3.
     }
 }
 
-/** White pill for the main action of a screen, translucent for the secondary one. */
+/** Pill in the text colour for the main action of a screen, translucent for the secondary one; [colors] over a video. */
 @Composable
-fun PillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, primary: Boolean = true, height: Dp = 44.dp) {
+fun PillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, primary: Boolean = true, height: Dp = 44.dp, colors: ThemeColors = Palette.colors) {
     Row(
-        modifier.height(height).clip(RoundedCornerShape(height / 2)).background(if (primary) Palette.Text else Palette.Text.copy(alpha = 0.14f))
+        modifier.height(height).clip(RoundedCornerShape(height / 2)).background(if (primary) colors.text else colors.text.copy(alpha = 0.14f))
             .clickable(onClick = onClick).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
     ) {
-        val color = if (primary) Palette.Ink else Palette.Text
+        val color = if (primary) colors.ink else colors.text
         if (icon != null) Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(if (height > 48.dp) 20.dp else 18.dp))
         Text(text, color = color, fontSize = if (height > 48.dp) 17.sp else 15.sp, fontWeight = if (primary) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
     }
@@ -198,15 +263,16 @@ fun PagerDots(count: Int, current: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** « ● DIRECT » badge over a live picture. */
+/** « ● DIRECT » badge over a live picture, dark whatever the theme. */
 @Composable
 fun LiveBadge(modifier: Modifier = Modifier) {
+    val video = Palette.Video
     Row(
-        modifier.clip(RoundedCornerShape(50)).background(Palette.Ink.copy(alpha = 0.75f)).padding(horizontal = 10.dp, vertical = 4.dp),
+        modifier.clip(RoundedCornerShape(50)).background(video.ink.copy(alpha = 0.75f)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(Palette.Accent))
-        Text(tr.liveBadge, color = Palette.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Box(Modifier.size(8.dp).clip(CircleShape).background(video.accent))
+        Text(tr.liveBadge, color = video.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     }
 }
 

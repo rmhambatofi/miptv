@@ -13,8 +13,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -136,9 +136,9 @@ private fun ProgrammeRow(programme: Programme, nowMs: Long) {
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-                Text(formatSlot(programme), style = MaterialTheme.typography.bodySmall, color = if (past) Color(0xFF5A6070) else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(96.dp))
+                Text(formatSlot(programme), style = MaterialTheme.typography.bodySmall, color = if (past) Palette.Dim else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(96.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(programme.title, style = MaterialTheme.typography.titleSmall, color = if (past) Color(0xFF8A90A0) else MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(programme.title, style = MaterialTheme.typography.titleSmall, color = if (past) Palette.colors.faded else MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     listOfNotNull(if (live) tr.onNow else null, programme.episode, programme.category).takeIf { it.isNotEmpty() }?.let {
                         Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
