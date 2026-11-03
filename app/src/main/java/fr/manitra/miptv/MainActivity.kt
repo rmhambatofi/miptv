@@ -64,6 +64,8 @@ import kotlinx.coroutines.flow.Flow
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A change of language recreates the activity (locale is not in configChanges): the texts follow it here.
+        I18n.language = Language.of(resources.configuration)
         enableEdgeToEdge()
         setContent {
             val app = application as MiptvApplication
@@ -250,7 +252,7 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             when {
                 state.sourcesOpen -> {
-                    BackHeader("Sources", { actions.openSources(false) }, "close-sources")
+                    BackHeader(tr.sources, { actions.openSources(false) }, "close-sources")
                     ContentList(scrollState, padded = true) { sourcesSection(state, actions.sources) }
                 }
                 guideOpen -> ContentList(scrollState, padded = true) {
@@ -261,7 +263,7 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                 state.destination == Destination.MOVIES -> MoviesScreen(state, pages.movies, playback, actions.vod, scrollState, sideways) { controls -> barLowered = !controls }
                 state.destination == Destination.SERIES -> SeriesScreen(state, pages.series, playback, actions.vod, nextEpisode, scrollState, sideways) { controls -> barLowered = !controls }
                 else -> {
-                    AppHeader("Recherche", state.sourcesOpen, actions.openSources)
+                    AppHeader(tr.search, state.sourcesOpen, actions.openSources)
                     ContentList(scrollState, padded = true) { searchSection(state, pages, actions) }
                 }
             }
@@ -291,7 +293,7 @@ private fun LazyListScope.homeSection(state: LiveState, channels: LazyPagingItem
         // Ten rows at most: one block, so the rows sit together rather than at the sections' spacing.
         item(key = "discover") {
             Column {
-                Text("À découvrir", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Gutter.padding(bottom = 6.dp))
+                Text(tr.discover, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Gutter.padding(bottom = 6.dp))
                 for (index in 0 until minOf(10, channels.itemCount)) {
                     channels[index]?.let { channel ->
                         key(channel.id) { ChannelRow(channel, state, false, actions.toggleFavorite, actions.guide.open, Modifier.padding(horizontal = 12.dp)) { actions.openChannel(channel) } }
@@ -327,18 +329,18 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844)))))
             HeroShade()
             Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Votre cinéma de poche", fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, lineHeight = 34.sp)
+                Text(tr.tagline, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, lineHeight = 34.sp)
                 Text(
                     when {
-                        state.hasXtream -> "${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries, depuis ${state.sources.size} source(s)."
-                        state.hasSources -> "${state.channelCount} chaînes dans ${state.imported.size} catégories, depuis ${state.sources.size} source(s)."
-                        else -> "Ajoutez votre playlist M3U ou votre fournisseur Xtream pour retrouver vos chaînes, films et séries ici."
+                        state.hasXtream -> tr.homeCatalogXtream(state.channelCount, state.movieCount, state.seriesCount, state.sources.size)
+                        state.hasSources -> tr.homeCatalogPlaylists(state.channelCount, state.imported.size, state.sources.size)
+                        else -> tr.homeEmpty
                     },
                     fontSize = 14.sp, color = Palette.Muted, textAlign = TextAlign.Center, lineHeight = 20.sp
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    PillButton("Explorer la TV", { actions.navigate(Destination.TV) }, icon = MiptvIcons.Tv)
-                    PillButton("Sources", { actions.openSources(true) }, Modifier.testTag("home-sources"), primary = false)
+                    PillButton(tr.exploreTv, { actions.navigate(Destination.TV) }, icon = MiptvIcons.Tv)
+                    PillButton(tr.sources, { actions.openSources(true) }, Modifier.testTag("home-sources"), primary = false)
                 }
             }
         } else {
@@ -352,17 +354,17 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { slides[it].key }) { page ->
                 val slide = slides[page]
                 Box(Modifier.fillMaxSize()) {
-                    Backdrop(slide.imageUrl, "Visuel du film")
+                    Backdrop(slide.imageUrl, tr.filmVisual)
                     HeroShade()
                     Column(Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 34.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("NOUVEAUTÉ", color = Palette.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text(tr.newBadge, color = Palette.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                         Text(slide.title, fontSize = 34.sp, fontWeight = FontWeight.Black, lineHeight = 37.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clickable(onClick = slide.open))
                         slide.meta?.let { Text(it, fontSize = 13.sp, color = Palette.Muted) }
                         slide.synopsis?.let { Text(it, fontSize = 14.sp, color = Palette.Muted, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp) }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                            if (slide.play != null) PillButton("Lecture", slide.play, Modifier.testTag("hero-play"), icon = MiptvIcons.Play)
-                            PillButton(if (slide.play != null) "Détails" else "Voir la série", slide.open, Modifier.testTag("hero-details"), primary = slide.play == null)
+                            if (slide.play != null) PillButton(tr.play, slide.play, Modifier.testTag("hero-play"), icon = MiptvIcons.Play)
+                            PillButton(if (slide.play != null) tr.details else tr.viewSeries, slide.open, Modifier.testTag("hero-details"), primary = slide.play == null)
                         }
                     }
                 }
@@ -372,9 +374,9 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
         // The brand bar sits over the picture.
         Box(Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp)) {
             Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
-            Text("Accueil", fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
+            Text(tr.home, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
             IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
-                Icon(MiptvIcons.Settings, contentDescription = "Sources")
+                Icon(MiptvIcons.Settings, contentDescription = tr.sources)
             }
         }
     }
@@ -411,8 +413,8 @@ private fun LazyListScope.favoriteChannelsRow(state: LiveState, actions: PhoneAc
     item {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Gutter.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Chaînes favorites", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("Toutes", color = Palette.Link, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                Text(tr.favoriteChannels, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(tr.allCategory, color = Palette.Link, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { actions.openCategory(Category.FAVORITES.id) }.padding(8.dp).testTag("favorites-all"))
             }
             LazyRow(modifier = Modifier.testTag("now-row"), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -420,7 +422,7 @@ private fun LazyListScope.favoriteChannelsRow(state: LiveState, actions: PhoneAc
                     val nowNext = state.nowNext[channel.id]
                     Column(
                         Modifier.width(84.dp).clip(RoundedCornerShape(14.dp))
-                            .combinedClickable(onClickLabel = "Lire", onLongClickLabel = "Guide des programmes", onLongClick = { actions.guide.open(channel) }) { actions.openChannel(channel) }
+                            .combinedClickable(onClickLabel = tr.watch, onLongClickLabel = tr.programmeGuide, onLongClick = { actions.guide.open(channel) }) { actions.openChannel(channel) }
                             .testTag("now-${channel.id}"),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -438,22 +440,22 @@ private fun LazyListScope.searchSection(state: LiveState, pages: ChannelPages, a
     val channels = pages.search
     item {
         TextField(value = state.query, onValueChange = actions.search,
-            placeholder = { Text(when { state.hasXtream -> "Rechercher une chaîne, un film, une série"; state.hasGuide -> "Rechercher une chaîne ou un programme"; else -> "Rechercher une chaîne" }) },
+            placeholder = { Text(when { state.hasXtream -> tr.searchHintAll; state.hasGuide -> tr.searchHintGuide; else -> tr.searchHintChannels }) },
             singleLine = true, shape = RoundedCornerShape(28.dp),
             leadingIcon = { Icon(MiptvIcons.Search, contentDescription = null) },
-            trailingIcon = { if (state.query.isNotEmpty()) IconButton(onClick = { actions.search("") }) { Icon(MiptvIcons.Close, contentDescription = "Effacer") } },
+            trailingIcon = { if (state.query.isNotEmpty()) IconButton(onClick = { actions.search("") }) { Icon(MiptvIcons.Close, contentDescription = tr.clear) } },
             colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, focusedContainerColor = Palette.Panel, unfocusedContainerColor = Palette.Panel),
             modifier = Modifier.fillMaxWidth().testTag("search-input"))
     }
     item {
         Text(
-            if (state.hasXtream) "Recherche locale parmi ${state.channelCount} chaînes, ${state.movieCount} films et ${state.seriesCount} séries."
-            else "Recherche locale parmi ${state.channelCount} chaînes importées.",
+            if (state.hasXtream) tr.localSearchAll(state.channelCount, state.movieCount, state.seriesCount)
+            else tr.localSearchChannels(state.channelCount),
             fontSize = 13.sp, color = Palette.Muted
         )
     }
-    if (state.hasXtream) item { SectionTitle("Chaînes · ${state.searchCount}") }
-    if (state.searchCount == 0) item { Text(if (state.hasXtream) "Aucune chaîne." else "Aucun résultat.", color = if (state.hasXtream) Palette.Muted else Palette.Text) }
+    if (state.hasXtream) item { SectionTitle("${tr.channels} · ${state.searchCount}") }
+    if (state.searchCount == 0) item { Text(if (state.hasXtream) tr.noChannel else tr.noResult, color = if (state.hasXtream) Palette.Muted else Palette.Text) }
     items(channels.itemCount, key = channels.itemKey { "search-${it.id}" }) { index ->
         channels[index]?.let { channel -> ChannelRow(channel, state, false, actions.toggleFavorite, actions.guide.open) { actions.openChannel(channel) } }
     }
@@ -488,7 +490,7 @@ fun FavoriteButton(favorite: Boolean, modifier: Modifier = Modifier, onToggle: (
     IconButton(onClick = onToggle, modifier = modifier) {
         Icon(
             if (favorite) MiptvIcons.BookmarkFilled else MiptvIcons.Bookmark,
-            contentDescription = if (favorite) "Retirer des favoris" else "Ajouter aux favoris",
+            contentDescription = if (favorite) tr.removeFavorite else tr.addFavorite,
             tint = if (favorite) Palette.Accent else Palette.Dim
         )
     }

@@ -106,14 +106,14 @@ fun AppHeader(title: String, sourcesOpen: Boolean, onSources: (Boolean) -> Unit)
         Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
         IconButton(onClick = { onSources(!sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
-            Icon(MiptvIcons.Settings, contentDescription = "Sources", tint = if (sourcesOpen) Palette.Accent else Palette.Muted)
+            Icon(MiptvIcons.Settings, contentDescription = tr.sources, tint = if (sourcesOpen) Palette.Accent else Palette.Muted)
         }
     }
 }
 
 /** Bar of a nested screen: back arrow, title, then [actions]. */
 @Composable
-fun BackHeader(title: String, onBack: () -> Unit, backTag: String, backLabel: String = "Retour", titleTag: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
+fun BackHeader(title: String, onBack: () -> Unit, backTag: String, backLabel: String = tr.back, titleTag: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel).padding(start = 4.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.testTag(backTag)) { Icon(MiptvIcons.Back, contentDescription = backLabel) }
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -206,7 +206,7 @@ fun LiveBadge(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(Palette.Accent))
-        Text("DIRECT", color = Palette.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text(tr.liveBadge, color = Palette.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     }
 }
 

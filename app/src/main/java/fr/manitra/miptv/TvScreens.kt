@@ -44,7 +44,7 @@ fun ColumnScope.TvScreen(
     val channelsList = key(state.categoryId) { rememberLazyListState() }
     when {
         state.ready && !state.hasSources -> {
-            AppHeader("TV en direct", state.sourcesOpen, actions.openSources)
+            AppHeader(tr.liveTv, state.sourcesOpen, actions.openSources)
             ContentList(listState, padded = true) { noSourceItem(actions) }
         }
         playback != null && state.selected != null && state.playerOpen -> PlayerPage(state, state.selected, channels, playback, actions, listState, onPlayerTap)
@@ -61,9 +61,9 @@ private fun LazyListScope.noSourceItem(actions: PhoneActions) {
     item {
         Card(Modifier.fillMaxWidth().testTag("no-source")) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Aucune source configurée", style = MaterialTheme.typography.titleLarge)
-                Text("Ajoutez une playlist M3U par adresse ou depuis un fichier pour afficher vos chaînes.", color = Palette.Muted)
-                PillButton("Ajouter une source", { actions.openSources(true) }, Modifier.testTag("add-source"), icon = MiptvIcons.Plus)
+                Text(tr.noSourceConfigured, style = MaterialTheme.typography.titleLarge)
+                Text(tr.noSourceHint, color = Palette.Muted)
+                PillButton(tr.addSource, { actions.openSources(true) }, Modifier.testTag("add-source"), icon = MiptvIcons.Plus)
             }
         }
     }
@@ -74,7 +74,7 @@ private fun LazyListScope.noSourceItem(actions: PhoneActions) {
 @Composable
 private fun ColumnScope.CategoriesPage(state: LiveState, actions: PhoneActions, listState: LazyListState) {
     var cover by rememberSaveable { mutableStateOf(false) }
-    AppHeader("TV en direct", state.sourcesOpen, actions.openSources)
+    AppHeader(tr.liveTv, state.sourcesOpen, actions.openSources)
     Box(Modifier.weight(1f)) {
         ContentList(listState, spacing = 0.dp) {
             if (cover) {
@@ -93,8 +93,8 @@ private fun ColumnScope.CategoriesPage(state: LiveState, actions: PhoneActions, 
         Row(
             Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).shadow(16.dp, RoundedCornerShape(50)).clip(RoundedCornerShape(50)).background(Palette.Panel).padding(4.dp)
         ) {
-            ViewChoice("Couverture", MiptvIcons.Grid, cover, Modifier.testTag("categories-cover")) { cover = true }
-            ViewChoice("Liste", MiptvIcons.List, !cover, Modifier.testTag("categories-list")) { cover = false }
+            ViewChoice(tr.coverView, MiptvIcons.Grid, cover, Modifier.testTag("categories-cover")) { cover = true }
+            ViewChoice(tr.listView, MiptvIcons.List, !cover, Modifier.testTag("categories-list")) { cover = false }
         }
     }
 }
@@ -145,25 +145,25 @@ private fun ColumnScope.ChannelsPage(state: LiveState, channels: LazyPagingItems
     var searching by rememberSaveable { mutableStateOf(false) }
     var grid by rememberSaveable { mutableStateOf(false) }
     val title = state.categoryNames[state.categoryId] ?: Category.ALL.name
-    BackHeader(title, actions.closeCategory, "close-category", backLabel = "Retour aux catégories") {
+    BackHeader(title, actions.closeCategory, "close-category", backLabel = tr.backToCategories) {
         IconButton(onClick = { searching = !searching }, modifier = Modifier.testTag("toggle-filter")) {
-            Icon(MiptvIcons.Search, contentDescription = "Rechercher dans la catégorie", tint = if (searching || state.filter.isNotEmpty()) Palette.Accent else Palette.Muted)
+            Icon(MiptvIcons.Search, contentDescription = tr.searchInCategory, tint = if (searching || state.filter.isNotEmpty()) Palette.Accent else Palette.Muted)
         }
         IconButton(onClick = { grid = !grid }, modifier = Modifier.testTag("toggle-view")) {
-            Icon(if (grid) MiptvIcons.List else MiptvIcons.Grid, contentDescription = "Changer l'affichage", tint = Palette.Muted)
+            Icon(if (grid) MiptvIcons.List else MiptvIcons.Grid, contentDescription = tr.changeLayout, tint = Palette.Muted)
         }
     }
     ContentList(listState, spacing = 0.dp) {
         if (searching || state.filter.isNotEmpty()) item {
-            Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) { FilterField(state.filter, "Filtrer les chaînes", "filter-input", actions.filter) }
+            Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) { FilterField(state.filter, tr.filterChannels, "filter-input", actions.filter) }
         }
-        item { Text("${state.visibleCount} chaînes", color = Palette.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) }
+        item { Text(tr.channelCount(state.visibleCount), color = Palette.Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) }
         if (state.visibleCount == 0) item {
             Text(
                 when {
-                    state.filter.isNotBlank() -> "Aucune chaîne ne correspond au filtre."
-                    state.categoryId == Category.FAVORITES.id -> "Aucun favori. Touchez le signet d'une chaîne pour l'ajouter."
-                    else -> "Aucune chaîne dans cette catégorie."
+                    state.filter.isNotBlank() -> tr.noChannelMatches
+                    state.categoryId == Category.FAVORITES.id -> tr.noFavoriteChannel
+                    else -> tr.noChannelInCategory
                 },
                 modifier = Modifier.padding(horizontal = 20.dp).testTag("empty-category")
             )
@@ -222,7 +222,7 @@ fun ChannelRow(
             // Only when a programme is known: no reserved space otherwise.
             if (nowNext != null) NowLine(nowNext, state.nowMs)
             else Text(
-                (if (selected) "En lecture · " else "") + (state.categoryNames[channel.categoryId] ?: M3uParser.DEFAULT_GROUP),
+                (if (selected) "${tr.nowPlaying} · " else "") + (state.categoryNames[channel.categoryId] ?: M3uParser.DEFAULT_GROUP),
                 fontSize = 13.sp, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
@@ -253,7 +253,7 @@ private fun ColumnScope.PlayerPage(
         }
         item { PlayerCategories(state, actions.category) }
         item {
-            Text("${state.visibleCount} chaînes".uppercase(), color = Palette.Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
+            Text(tr.channelCount(state.visibleCount).uppercase(), color = Palette.Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 6.dp))
         }
         items(channels.itemCount, key = channels.itemKey { "up-next-${it.id}" }) { index ->
@@ -305,10 +305,10 @@ private fun MiniPlayer(channel: Channel, state: LiveState, playback: Playback, a
             )
         }
         IconButton(onClick = playback::togglePlay, modifier = Modifier.testTag("mini-play-pause")) {
-            Icon(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, contentDescription = if (playback.playing) "Pause" else "Lecture")
+            Icon(if (playback.playing) MiptvIcons.Pause else MiptvIcons.Play, contentDescription = if (playback.playing) tr.pause else tr.play)
         }
         IconButton(onClick = actions.closePlayer, modifier = Modifier.testTag("mini-close")) {
-            Icon(MiptvIcons.Close, contentDescription = "Fermer le lecteur", tint = Palette.Muted)
+            Icon(MiptvIcons.Close, contentDescription = tr.closePlayer, tint = Palette.Muted)
         }
     }
 }
@@ -325,6 +325,6 @@ private fun UpNextRow(channel: Channel, state: LiveState, current: Boolean, onCl
             Text(channel.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(state.nowNext[channel.id]?.now?.title ?: (state.categoryNames[channel.categoryId] ?: M3uParser.DEFAULT_GROUP), fontSize = 13.sp, color = Palette.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (current) Text("EN COURS", color = Palette.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        if (current) Text(tr.nowBadge, color = Palette.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     }
 }

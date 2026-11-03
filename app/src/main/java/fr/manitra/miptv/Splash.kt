@@ -64,15 +64,15 @@ fun Splash(onDone: () -> Unit) {
                     Box(Modifier.width(4.dp).height((height * scale).coerceIn(4f, 22f).dp).clip(RoundedCornerShape(2.dp)).background(color))
                 }
             }
-            Text("Votre cinéma de poche", color = Palette.Muted, fontSize = 14.sp, letterSpacing = 1.sp)
+            Text(tr.tagline, color = Palette.Muted, fontSize = 14.sp, letterSpacing = 1.sp)
         }
         Column(
             Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             ProgressLine(progress.value, Modifier.padding(bottom = 24.dp).width(120.dp))
-            Text("Version ${BuildConfig.VERSION_NAME}", color = Palette.Muted, fontSize = 12.sp, letterSpacing = 0.5.sp, modifier = Modifier.testTag("splash-version"))
-            Text("par $AUTHOR", color = Palette.Dim, fontSize = 12.sp, modifier = Modifier.testTag("splash-author"))
+            Text(tr.version(BuildConfig.VERSION_NAME), color = Palette.Muted, fontSize = 12.sp, letterSpacing = 0.5.sp, modifier = Modifier.testTag("splash-version"))
+            Text(tr.byAuthor(AUTHOR), color = Palette.Dim, fontSize = 12.sp, modifier = Modifier.testTag("splash-author"))
         }
     }
 }

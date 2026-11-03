@@ -11,10 +11,10 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Shown when a stored password can no longer be decrypted (key lost: restore on another device, wiped Keystore). */
-const val CREDENTIALS_TO_REENTER = "Identifiants à ressaisir."
+val CREDENTIALS_TO_REENTER: String get() = tr.credentialsToReenter
 
 /** Thrown by [SecretCipher.encrypt] when no key can be obtained; the message is safe to show. */
-class SecretStoreException(cause: Throwable?) : GeneralSecurityException("Stockage sécurisé indisponible sur cet appareil.", cause)
+class SecretStoreException(cause: Throwable?) : GeneralSecurityException(tr.secureStorageUnavailableOnDevice, cause)
 
 /** Encrypts provider passwords at rest. [decrypt] returns null, never garbage, when the text cannot be read any more. */
 interface SecretCipher {

@@ -82,22 +82,22 @@ fun ColumnScope.MoviesScreen(
         return
     }
     CatalogueScreen(
-        title = "Films", tag = "movie", categories = state.movieCategoryList, categoryId = state.movieCategoryId, onCategory = actions.movieCategory,
-        filter = state.movieFilter, filterLabel = "Filtrer les films", onFilter = actions.movieFilter, available = !(state.ready && !state.hasXtream), listState = listState
+        title = tr.movies, tag = "movie", categories = state.movieCategoryList, categoryId = state.movieCategoryId, onCategory = actions.movieCategory,
+        filter = state.movieFilter, filterLabel = tr.filterMovies, onFilter = actions.movieFilter, available = !(state.ready && !state.hasXtream), listState = listState
     ) {
-        if (state.ready && !state.hasXtream) { noProviderItem("films", actions); return@CatalogueScreen }
+        if (state.ready && !state.hasXtream) { noProviderItem(tr.noProviderMovies, actions); return@CatalogueScreen }
         if (state.movieCategoryId == Category.ALL.id && state.movieFilter.isBlank() && state.recentMovies.isNotEmpty()) item(key = "hero") {
             CatalogueHero(state.recentMovies.take(5).map { movie ->
                 HeroEntry(movie.id, movie.title, listOfNotNull(state.categoryNames[movie.categoryId]?.let { splitZone(it).second }, movie.year?.toString(), movie.durationSeconds?.let(::formatDuration)).joinToString(" · "), movie.posterUrl, null) { actions.openMovie(movie) }
-            }, "Visuel du film")
+            }, tr.filmVisual)
         }
         item { RowTitle("${state.categoryNames[state.movieCategoryId] ?: Category.ALL.name} · ${state.visibleMovieCount}", Gutter.padding(top = 8.dp)) }
         if (state.visibleMovieCount == 0) item {
             Text(
                 when {
-                    state.movieFilter.isNotBlank() -> "Aucun film ne correspond au filtre."
-                    state.movieCategoryId == Category.FAVORITES.id -> "Aucun film dans votre liste. Touchez « Ma liste » sur une fiche pour l'ajouter."
-                    else -> "Aucun film dans cette catégorie."
+                    state.movieFilter.isNotBlank() -> tr.noMovieMatches
+                    state.movieCategoryId == Category.FAVORITES.id -> tr.noMovieInList
+                    else -> tr.noMovieInCategory
                 },
                 modifier = Gutter.testTag("empty-movies")
             )
@@ -118,23 +118,23 @@ private fun LazyListScope.movieSheet(state: LiveState, sheet: MovieSheet, playba
         item { VodPlayer(playing, actions.fullscreen, actions.stop, onNext = null) }
         item { Text(meta, color = Palette.Muted, fontSize = 13.sp, modifier = Gutter.testTag("movie-meta")) }
     } else item {
-        SheetHero(movie.title, meta, "movie-meta", movie.posterUrl, "Jaquette du film", 520.dp, actions.closeSheet) {
+        SheetHero(movie.title, meta, "movie-meta", movie.posterUrl, tr.filmPoster, 520.dp, actions.closeSheet) {
             if (resume != null) PillButton(resumeLabel(resume.positionMs), { actions.playMovie(movie, false) }, Modifier.fillMaxWidth().testTag("resume-movie"), icon = MiptvIcons.Play, height = 56.dp)
-            else PillButton("Regarder maintenant", { actions.playMovie(movie, false) }, Modifier.fillMaxWidth().testTag("play-movie"), icon = MiptvIcons.Play, height = 56.dp)
+            else PillButton(tr.watchNow, { actions.playMovie(movie, false) }, Modifier.fillMaxWidth().testTag("play-movie"), icon = MiptvIcons.Play, height = 56.dp)
         }
     }
     item {
         ActionRow {
             ListAction(state.isFavorite(movie.id), "favorite-${movie.id}") { actions.toggleFavorite(movie.id) }
-            if (resume != null) SheetAction("Recommencer", MiptvIcons.Restart, { actions.playMovie(movie, true) }, Modifier.weight(1f).testTag("play-movie"))
+            if (resume != null) SheetAction(tr.restart, MiptvIcons.Restart, { actions.playMovie(movie, true) }, Modifier.weight(1f).testTag("play-movie"))
             ShareAction(movie.title, listOfNotNull(movie.year?.toString(), movie.durationSeconds?.let(::formatDuration)).joinToString(" · "))
         }
     }
-    sheetStatus(sheet.loading, "Fiche en cours de chargement…", sheet.error)
+    sheetStatus(sheet.loading, tr.loadingSheet, sheet.error)
     item {
         Column(Gutter, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(movie.synopsis ?: if (sheet.loading) "" else "Aucun synopsis fourni.", fontSize = 14.sp, lineHeight = 21.sp, color = Palette.Muted, modifier = Modifier.testTag("movie-synopsis"))
-            Detail("Catégorie", state.categoryNames[movie.categoryId] ?: M3uParser.DEFAULT_GROUP)
+            Text(movie.synopsis ?: if (sheet.loading) "" else tr.noSynopsis, fontSize = 14.sp, lineHeight = 21.sp, color = Palette.Muted, modifier = Modifier.testTag("movie-synopsis"))
+            Detail(tr.category, state.categoryNames[movie.categoryId] ?: M3uParser.DEFAULT_GROUP)
         }
     }
 }
@@ -155,22 +155,22 @@ fun ColumnScope.SeriesScreen(
         return
     }
     CatalogueScreen(
-        title = "Séries", tag = "series", categories = state.seriesCategoryList, categoryId = state.seriesCategoryId, onCategory = actions.seriesCategory,
-        filter = state.seriesFilter, filterLabel = "Filtrer les séries", onFilter = actions.seriesFilter, available = !(state.ready && !state.hasXtream), listState = listState
+        title = tr.series, tag = "series", categories = state.seriesCategoryList, categoryId = state.seriesCategoryId, onCategory = actions.seriesCategory,
+        filter = state.seriesFilter, filterLabel = tr.filterSeries, onFilter = actions.seriesFilter, available = !(state.ready && !state.hasXtream), listState = listState
     ) {
-        if (state.ready && !state.hasXtream) { noProviderItem("séries", actions); return@CatalogueScreen }
+        if (state.ready && !state.hasXtream) { noProviderItem(tr.noProviderSeries, actions); return@CatalogueScreen }
         if (state.seriesCategoryId == Category.ALL.id && state.seriesFilter.isBlank() && state.recentSeries.isNotEmpty()) item(key = "hero") {
             CatalogueHero(state.recentSeries.take(5).map { item ->
-                HeroEntry(item.id, item.title, listOfNotNull(state.categoryNames[item.categoryId]?.let { splitZone(it).second }, item.year?.toString()).joinToString(" · "), item.posterUrl, "NOUVEAUX ÉPISODES") { actions.openSeries(item) }
-            }, "Visuel de la série")
+                HeroEntry(item.id, item.title, listOfNotNull(state.categoryNames[item.categoryId]?.let { splitZone(it).second }, item.year?.toString()).joinToString(" · "), item.posterUrl, tr.newEpisodesBadge) { actions.openSeries(item) }
+            }, tr.seriesVisual)
         }
         item { RowTitle("${state.categoryNames[state.seriesCategoryId] ?: Category.ALL.name} · ${state.visibleSeriesCount}", Gutter.padding(top = 8.dp)) }
         if (state.visibleSeriesCount == 0) item {
             Text(
                 when {
-                    state.seriesFilter.isNotBlank() -> "Aucune série ne correspond au filtre."
-                    state.seriesCategoryId == Category.FAVORITES.id -> "Aucune série dans votre liste. Touchez « Ma liste » sur une fiche pour l'ajouter."
-                    else -> "Aucune série dans cette catégorie."
+                    state.seriesFilter.isNotBlank() -> tr.noSeriesMatches
+                    state.seriesCategoryId == Category.FAVORITES.id -> tr.noSeriesInList
+                    else -> tr.noSeriesInCategory
                 },
                 modifier = Gutter.testTag("empty-series")
             )
@@ -187,8 +187,8 @@ private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, play
     val playing = sheet.playing(playback)
     val meta = listOfNotNull(
         state.categoryNames[series.categoryId]?.let { splitZone(it).second }, series.year?.toString(),
-        info?.seasons?.size?.takeIf { it > 0 }?.let { if (it > 1) "$it saisons" else "1 saison" },
-        info?.episodes?.size?.takeIf { it > 0 }?.let { if (it > 1) "$it épisodes" else "1 épisode" },
+        info?.seasons?.size?.takeIf { it > 0 }?.let { tr.seasonCount(it) },
+        info?.episodes?.size?.takeIf { it > 0 }?.let { tr.episodeCount(it) },
         series.rating?.let { "★ ${formatRating(it)}" }
     ).joinToString(" · ")
     // The episode to go on with: the last one left unfinished, else the first.
@@ -198,9 +198,9 @@ private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, play
         item { SheetBar(series.title, actions.closeSheet) }
         item { VodPlayer(playing, actions.fullscreen, actions.stop, onNext = if (nextEpisode != null) actions.playNext else null) }
     } else item {
-        SheetHero(series.title, meta, "series-meta", series.posterUrl, "Visuel de la série", 400.dp, actions.closeSheet) {
+        SheetHero(series.title, meta, "series-meta", series.posterUrl, tr.seriesVisual, 400.dp, actions.closeSheet) {
             if (start != null) PillButton(
-                (if (resumeEpisode != null) "Reprendre" else "Regarder") + " S${start.season} · E${start.number}", { actions.playEpisode(start) },
+                (if (resumeEpisode != null) tr.resume else tr.watchVerb) + " S${start.season} · E${start.number}", { actions.playEpisode(start) },
                 Modifier.fillMaxWidth().testTag(if (resumeEpisode != null) "resume-series" else "play-series"), icon = MiptvIcons.Play, height = 56.dp
             )
         }
@@ -211,10 +211,10 @@ private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, play
             ShareAction(series.title, series.year?.toString().orEmpty())
         }
     }
-    sheetStatus(sheet.loading, "Saisons en cours de chargement…", sheet.error)
+    sheetStatus(sheet.loading, tr.loadingSeasons, sheet.error)
     series.synopsis?.let { item { Text(it, fontSize = 14.sp, lineHeight = 21.sp, color = Palette.Muted, modifier = Gutter.testTag("series-synopsis")) } }
     if (info == null) return
-    if (info.seasons.isEmpty()) { item { Text("Aucun épisode disponible chez le fournisseur.", modifier = Gutter.testTag("empty-seasons")) }; return }
+    if (info.seasons.isEmpty()) { item { Text(tr.noEpisode, modifier = Gutter.testTag("empty-seasons")) }; return }
     item {
         LazyRow(modifier = Modifier.testTag("season-strip"), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(info.seasons, key = { it.number }) { season ->
@@ -237,7 +237,7 @@ private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, play
         ) {
             Box(Modifier.width(112.dp).height(64.dp).clip(RoundedCornerShape(8.dp)).background(Palette.Raised), contentAlignment = Alignment.Center) {
                 episode.thumbnailUrl?.let { SubcomposeAsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), error = { }, loading = { }) }
-                Icon(MiptvIcons.Play, contentDescription = "Lire", tint = Palette.Text, modifier = Modifier.size(22.dp))
+                Icon(MiptvIcons.Play, contentDescription = tr.watch, tint = Palette.Text, modifier = Modifier.size(22.dp))
                 if (progress != null && progress.durationMs > 0) ProgressLine(
                     if (progress.finished) 1f else progress.positionMs.toFloat() / progress.durationMs,
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth(), track = Palette.Text.copy(alpha = 0.2f)
@@ -248,8 +248,8 @@ private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, play
                 val detail = listOfNotNull(
                     episode.durationSeconds?.let(::formatDuration),
                     when {
-                        current -> "En lecture"
-                        progress?.finished == true -> "Vu"
+                        current -> tr.nowPlaying
+                        progress?.finished == true -> tr.watched
                         progress != null && progress.positionMs > 0 -> resumeLabel(progress.positionMs)
                         else -> null
                     }
@@ -267,14 +267,14 @@ fun LazyListScope.homeVodRows(state: LiveState, actions: VodActions) {
     if (!state.hasXtream) return
     if (state.resume.isNotEmpty()) item {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Continuer le visionnage", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Gutter)
+            Text(tr.continueWatching, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Gutter)
             LazyRow(modifier = Modifier.testTag("resume-row"), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(state.resume, key = { it.item.id }) { entry ->
                     Column(Modifier.width(236.dp).clip(RoundedCornerShape(10.dp)).clickable { actions.resume(entry) }.testTag("resume-${entry.item.id}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Box(Modifier.fillMaxWidth().height(132.dp).clip(RoundedCornerShape(10.dp)).background(Palette.Raised)) {
                             entry.posterUrl?.let { SubcomposeAsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), error = { }, loading = { }) }
                             val left = ((entry.progress.durationMs - entry.progress.positionMs) / 1000).toInt().coerceAtLeast(60)
-                            Text("Reste ${formatDuration(left)}", color = Palette.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            Text(tr.timeLeft(formatDuration(left)), color = Palette.Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(8.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Ink.copy(alpha = 0.75f)).padding(horizontal = 7.dp, vertical = 3.dp))
                             ProgressLine(entry.progress.positionMs.toFloat() / entry.progress.durationMs, Modifier.align(Alignment.BottomCenter).fillMaxWidth(), height = 4.dp, track = Palette.Text.copy(alpha = 0.2f))
                         }
@@ -285,10 +285,10 @@ fun LazyListScope.homeVodRows(state: LiveState, actions: VodActions) {
             }
         }
     }
-    if (state.recentMovies.isNotEmpty()) posterRow("Films récents", "recent-movies") {
+    if (state.recentMovies.isNotEmpty()) posterRow(tr.recentMovies, "recent-movies") {
         items(state.recentMovies, key = { it.id }) { movie -> Box(Modifier.width(120.dp)) { PosterCard(movie.title, movie.posterUrl, movie.year?.toString(), "recent-${movie.id}") { actions.openMovie(movie) } } }
     }
-    if (state.recentSeries.isNotEmpty()) posterRow("Séries récentes", "recent-series") {
+    if (state.recentSeries.isNotEmpty()) posterRow(tr.recentSeries, "recent-series") {
         items(state.recentSeries, key = { it.id }) { series -> Box(Modifier.width(120.dp)) { PosterCard(series.title, series.posterUrl, series.year?.toString(), "recent-${series.id}") { actions.openSeries(series) } } }
     }
 }
@@ -305,13 +305,13 @@ private fun LazyListScope.posterRow(title: String, tag: String, content: LazyLis
 /** Films and series matching the search, as compact rows under their own headings. */
 fun LazyListScope.searchVodSections(state: LiveState, movies: LazyPagingItems<Movie>, series: LazyPagingItems<Series>, actions: VodActions) {
     if (!state.hasXtream) return
-    item { SectionTitle("Films · ${state.searchMovieCount}") }
-    if (state.searchMovieCount == 0) item { Text("Aucun film.", color = Palette.Muted) }
+    item { SectionTitle("${tr.movies} · ${state.searchMovieCount}") }
+    if (state.searchMovieCount == 0) item { Text(tr.noMovie, color = Palette.Muted) }
     items(movies.itemCount, key = { index -> "search-" + (movies.peek(index)?.id ?: "movie-$index") }) { index ->
         movies[index]?.let { movie -> SearchRow(movie.title, movie.movieSubtitle(), movie.posterUrl, "search-${movie.id}") { actions.openMovie(movie) } }
     }
-    item { SectionTitle("Séries · ${state.searchSeriesCount}") }
-    if (state.searchSeriesCount == 0) item { Text("Aucune série.", color = Palette.Muted) }
+    item { SectionTitle("${tr.series} · ${state.searchSeriesCount}") }
+    if (state.searchSeriesCount == 0) item { Text(tr.noSeries, color = Palette.Muted) }
     items(series.itemCount, key = { index -> "search-" + (series.peek(index)?.id ?: "series-$index") }) { index ->
         series[index]?.let { item -> SearchRow(item.title, item.year?.toString(), item.posterUrl, "search-${item.id}") { actions.openSeries(item) } }
     }
@@ -367,8 +367,8 @@ private fun BoxScope.CategoryMenu(categories: List<Category>, selectedId: String
             .clip(RoundedCornerShape(22.dp)).background(Palette.Panel).padding(8.dp).testTag("$tag-category-menu")
     ) {
         Row(Modifier.fillMaxWidth().padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Catégories", fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            IconButton(onClick = onClose) { Icon(MiptvIcons.Close, contentDescription = "Fermer", tint = Palette.Muted) }
+            Text(tr.categories, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            IconButton(onClick = onClose) { Icon(MiptvIcons.Close, contentDescription = tr.close, tint = Palette.Muted) }
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             items(categories, key = { it.id }) { category ->
@@ -419,7 +419,7 @@ private fun SheetHero(title: String, meta: String, metaTag: String, imageUrl: St
         Backdrop(imageUrl, placeholder)
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Palette.Ink)))
         IconButton(onClick = onBack, modifier = Modifier.padding(14.dp).size(44.dp).clip(CircleShape).background(Palette.Ink.copy(alpha = 0.6f)).testTag("close-sheet")) {
-            Icon(MiptvIcons.Back, contentDescription = "Retour")
+            Icon(MiptvIcons.Back, contentDescription = tr.back)
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(title, fontSize = 32.sp, fontWeight = FontWeight.Black, lineHeight = 35.sp, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("sheet-title"))
@@ -442,7 +442,7 @@ private fun ActionRow(content: @Composable RowScope.() -> Unit) {
 
 @Composable
 private fun RowScope.ListAction(inList: Boolean, tag: String, onToggle: () -> Unit) {
-    SheetAction(if (inList) "Dans ma liste" else "Ma liste", if (inList) MiptvIcons.Check else MiptvIcons.Plus, onToggle,
+    SheetAction(if (inList) tr.inMyList else tr.myList, if (inList) MiptvIcons.Check else MiptvIcons.Plus, onToggle,
         Modifier.weight(1f).testTag(tag), tint = if (inList) Palette.Accent else Palette.Text)
 }
 
@@ -450,7 +450,7 @@ private fun RowScope.ListAction(inList: Boolean, tag: String, onToggle: () -> Un
 @Composable
 private fun RowScope.ShareAction(title: String, detail: String) {
     val context = LocalContext.current
-    SheetAction("Partager", MiptvIcons.Share, {
+    SheetAction(tr.share, MiptvIcons.Share, {
         val text = if (detail.isEmpty()) title else "$title ($detail)"
         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), null))
     }, Modifier.weight(1f).testTag("share"))
@@ -470,13 +470,13 @@ private fun Detail(label: String, value: String) {
     Text(buildString { append(label); append(" · "); append(value) }, fontSize = 13.sp, color = Palette.Muted)
 }
 
-private fun LazyListScope.noProviderItem(what: String, actions: VodActions) {
+private fun LazyListScope.noProviderItem(message: String, actions: VodActions) {
     item {
         Card(Gutter.padding(top = 16.dp).fillMaxWidth().testTag("no-provider")) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Aucun fournisseur Xtream", style = MaterialTheme.typography.titleLarge)
-                Text("Les $what viennent du catalogue d'un fournisseur Xtream Codes. Ajoutez le vôtre avec son serveur, votre identifiant et votre mot de passe.", color = Palette.Muted)
-                PillButton("Ajouter un fournisseur", { actions.openSources(true) }, Modifier.testTag("add-provider"), icon = MiptvIcons.Plus)
+                Text(tr.noXtreamProvider, style = MaterialTheme.typography.titleLarge)
+                Text(message, color = Palette.Muted)
+                PillButton(tr.addProvider, { actions.openSources(true) }, Modifier.testTag("add-provider"), icon = MiptvIcons.Plus)
             }
         }
     }
@@ -535,7 +535,7 @@ fun FilterField(value: String, label: String, tag: String, onChange: (String) ->
     TextField(value = value, onValueChange = onChange, singleLine = true, shape = RoundedCornerShape(28.dp),
         placeholder = { Text(label) },
         leadingIcon = { Icon(MiptvIcons.Search, contentDescription = null) },
-        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(MiptvIcons.Close, contentDescription = "Effacer") } },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(MiptvIcons.Close, contentDescription = tr.clear) } },
         colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, focusedContainerColor = Palette.Panel, unfocusedContainerColor = Palette.Panel),
         modifier = Modifier.fillMaxWidth().testTag(tag))
 }

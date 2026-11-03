@@ -46,7 +46,7 @@ object Http {
         var url = URL(location)
         repeat(MAX_REDIRECTS) {
             val connection = (url.openConnection() as? HttpURLConnection)
-                ?: throw PlaylistException("Seules les adresses http:// et https:// sont acceptées.")
+                ?: throw PlaylistException(tr.onlyHttp)
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
@@ -54,7 +54,7 @@ object Http {
             connection.setRequestProperty("Accept", "*/*")
             val code = connection.responseCode
             if (code in 300..399) {
-                val target = connection.getHeaderField("Location") ?: throw PlaylistException("Redirection invalide (HTTP $code).")
+                val target = connection.getHeaderField("Location") ?: throw PlaylistException(tr.invalidRedirect(code))
                 connection.disconnect()
                 url = URL(url, target)
                 return@repeat
@@ -65,7 +65,7 @@ object Http {
             }
             return connection.inputStream
         }
-        throw PlaylistException("Trop de redirections.")
+        throw PlaylistException(tr.tooManyRedirects)
     }
 }
 
@@ -76,25 +76,25 @@ class AndroidPlaylistLoader(private val context: Context) : PlaylistLoader {
     override suspend fun open(location: String, kind: SourceKind): InputStream = withContext(Dispatchers.IO) {
         when (kind) {
             SourceKind.FILE -> context.contentResolver.openInputStream(location.toUri())
-                ?: throw PlaylistException("Fichier inaccessible. Sélectionnez-le à nouveau.")
+                ?: throw PlaylistException(tr.fileInaccessible)
             SourceKind.URL -> Http.open(location)
             // An Xtream source is imported through XtreamClient, not read as a playlist.
-            SourceKind.XTREAM -> throw PlaylistException("Cette source est un fournisseur Xtream, pas une playlist.")
+            SourceKind.XTREAM -> throw PlaylistException(tr.xtreamNotPlaylist)
         }
     }
 }
 
-/** Maps transport failures to French messages without echoing the location. */
+/** Maps transport failures to messages in the current language without echoing the location. */
 fun describeImportError(error: Throwable): String = when (error) {
-    is PlaylistException -> error.message ?: "Importation impossible."
-    is UnknownHostException -> "Hôte introuvable. Vérifiez l'adresse et la connexion."
-    is SocketTimeoutException -> "Délai dépassé. Le serveur ne répond pas."
-    is SSLException -> "Connexion sécurisée impossible."
-    is FileNotFoundException, is SecurityException -> "Fichier inaccessible. Sélectionnez-le à nouveau."
-    is IllegalArgumentException, is java.net.MalformedURLException -> "Adresse invalide."
-    is HttpStatusException -> "Le serveur a répondu HTTP ${error.code}."
-    is IOException -> "Lecture de la playlist impossible."
-    else -> "Importation impossible."
+    is PlaylistException -> error.message ?: tr.importFailed
+    is UnknownHostException -> tr.hostNotFound
+    is SocketTimeoutException -> tr.timeout
+    is SSLException -> tr.secureConnectionFailed
+    is FileNotFoundException, is SecurityException -> tr.fileInaccessible
+    is IllegalArgumentException, is java.net.MalformedURLException -> tr.invalidAddress
+    is HttpStatusException -> tr.serverHttp(error.code)
+    is IOException -> tr.playlistReadFailed
+    else -> tr.importFailed
 }
 
 /**
@@ -159,11 +159,11 @@ class MemoryChannelRepository(
     }
 
     override suspend fun checkXtreamAccount(account: XtreamAccount): Fetched<XtreamAccountInfo> =
-        xtream?.check(account) ?: Fetched.Failure("Aucun fournisseur Xtream n'est configuré.")
+        xtream?.check(account) ?: Fetched.Failure(tr.noXtreamConfigured)
 
     override suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult = mutex.withLock {
         val server = normalizeXtreamServer(account.server)
-        if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return ImportResult.Failure("Serveur, identifiant et mot de passe sont requis.")
+        if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return ImportResult.Failure(tr.credentialsRequired)
         val normalized = account.copy(server = server, username = account.username.trim())
         val source = Source(nextId, name, server, SourceKind.XTREAM, username = normalized.username)
         val result = importXtream(source, normalized)
@@ -177,7 +177,7 @@ class MemoryChannelRepository(
     }
 
     override suspend fun refreshSource(id: Long): ImportResult = mutex.withLock {
-        val source = sourcesFlow.value.firstOrNull { it.id == id } ?: return ImportResult.Failure("Source introuvable.")
+        val source = sourcesFlow.value.firstOrNull { it.id == id } ?: return ImportResult.Failure(tr.sourceNotFound)
         val result = if (source.kind == SourceKind.XTREAM) {
             accounts[id]?.let { importXtream(source, it) } ?: ImportResult.Failure(CREDENTIALS_TO_REENTER)
         } else import(source)
@@ -247,7 +247,7 @@ class MemoryChannelRepository(
 
     override suspend fun movieDetails(id: String): Fetched<Movie> {
         detailedMovies[id]?.let { return Fetched.Success(it) }
-        val movie = movie(id) ?: return Fetched.Failure("Film introuvable.")
+        val movie = movie(id) ?: return Fetched.Failure(tr.movieNotFound)
         val account = accounts[movie.sourceId] ?: return Fetched.Failure(CREDENTIALS_TO_REENTER)
         val client = xtream ?: return Fetched.Failure(CREDENTIALS_TO_REENTER)
         return try {
@@ -260,7 +260,7 @@ class MemoryChannelRepository(
     override suspend fun seriesInfo(id: String, refresh: Boolean): Fetched<SeriesInfo> {
         val cached = seriesInfos[id]
         if (cached != null && !refresh) return Fetched.Success(cached)
-        val series = series(id) ?: return Fetched.Failure("Série introuvable.")
+        val series = series(id) ?: return Fetched.Failure(tr.seriesNotFound)
         val account = accounts[series.sourceId]
         val client = xtream
         if (account == null || client == null) return cached?.let { Fetched.Success(it) } ?: Fetched.Failure(CREDENTIALS_TO_REENTER)
@@ -286,7 +286,7 @@ class MemoryChannelRepository(
 
     private suspend fun import(source: Source): ImportResult = try {
         val parsed = loader.open(source.location, source.kind).use { M3uParser(source.id).parse(it) }
-        if (parsed.channels.isEmpty()) ImportResult.Failure("Aucune chaîne trouvée dans cette playlist.")
+        if (parsed.channels.isEmpty()) ImportResult.Failure(tr.noChannelInPlaylist)
         else {
             playlists[source.id] = parsed
             // The address the user set wins over the header's.
@@ -299,11 +299,11 @@ class MemoryChannelRepository(
     // --- Programme guide ---
 
     override suspend fun setEpgUrl(sourceId: Long, url: String?): ImportResult = mutex.withLock {
-        val source = sourcesFlow.value.firstOrNull { it.id == sourceId } ?: return ImportResult.Failure("Source introuvable.")
-        if (source.kind == SourceKind.XTREAM) return ImportResult.Failure("Le guide d'un fournisseur Xtream vient de son compte.")
+        val source = sourcesFlow.value.firstOrNull { it.id == sourceId } ?: return ImportResult.Failure(tr.sourceNotFound)
+        if (source.kind == SourceKind.XTREAM) return ImportResult.Failure(tr.xtreamGuideFromAccount)
         val clean = url?.trim()?.ifEmpty { null }
         if (clean != null && !clean.startsWith("http://", ignoreCase = true) && !clean.startsWith("https://", ignoreCase = true)) {
-            return ImportResult.Failure("Seules les adresses http:// et https:// sont acceptées.")
+            return ImportResult.Failure(tr.onlyHttp)
         }
         if (clean == null) {
             guides.remove(sourceId)
@@ -324,7 +324,7 @@ class MemoryChannelRepository(
 
     /** Same contract as the Room implementation: XMLTV of the playlist, or `xmltv.php` kept to the favourites. Callers hold [mutex]. */
     private suspend fun importGuide(sourceId: Long): ImportResult {
-        val source = sourcesFlow.value.firstOrNull { it.id == sourceId } ?: return ImportResult.Failure("Source introuvable.")
+        val source = sourcesFlow.value.firstOrNull { it.id == sourceId } ?: return ImportResult.Failure(tr.sourceNotFound)
         val now = clock()
         try {
             val channels = playlists[sourceId]?.channels.orEmpty()
@@ -343,7 +343,7 @@ class MemoryChannelRepository(
                 location = account.xmltvUrl()
                 filter = { it in keys }
             } else {
-                location = source.epgUrl ?: return ImportResult.Failure("Aucune adresse de guide pour cette source.")
+                location = source.epgUrl ?: return ImportResult.Failure(tr.noGuideAddress)
             }
             val programmes = ArrayList<Programme>()
             val parser = XmltvParser(sourceId, fromMs = now - EpgWindow.BEFORE_MS, toMs = now + EpgWindow.AFTER_MS, channelFilter = filter)
@@ -449,13 +449,13 @@ class MemoryChannelRepository(
     }
 
     private suspend fun importXtream(source: Source, account: XtreamAccount): ImportResult {
-        val client = xtream ?: return ImportResult.Failure("Aucun fournisseur Xtream n'est configuré.")
+        val client = xtream ?: return ImportResult.Failure(tr.noXtreamConfigured)
         return try {
             val info = client.account(account)
             info.blocker()?.let { return ImportResult.Failure(it) }
             val live = client.liveCatalog(account, source.id, info.liveExtension)
             val catalog = Vod(client.movieCategories(account, source.id), client.movies(account, source.id), client.seriesCategories(account, source.id), client.series(account, source.id))
-            if (live.channels.isEmpty() && catalog.movies.isEmpty() && catalog.series.isEmpty()) return ImportResult.Failure("Ce compte ne donne accès à aucun contenu.")
+            if (live.channels.isEmpty() && catalog.movies.isEmpty() && catalog.series.isEmpty()) return ImportResult.Failure(tr.accountNoContent)
             playlists[source.id] = live
             vod[source.id] = catalog
             // The season/episode cache and film details of this source are refreshed with it.

@@ -637,7 +637,7 @@ class RoomChannelRepository(
     override val sources: Flow<List<Source>> = dao.sources().map { list -> list.map { it.toSource() } }
 
     override suspend fun addSource(name: String, location: String, kind: SourceKind): ImportResult = mutex.withLock {
-        if (kind == SourceKind.XTREAM) return ImportResult.Failure("Une source Xtream s'ajoute avec un identifiant et un mot de passe.")
+        if (kind == SourceKind.XTREAM) return ImportResult.Failure(tr.xtreamNeedsCredentials)
         val source = Source((dao.maxSourceId() ?: 0L) + 1, name, location, kind)
         when (val result = import(source)) {
             is ImportOutcome.Failure -> ImportResult.Failure(result.message)
@@ -658,12 +658,12 @@ class RoomChannelRepository(
 
     override suspend fun addXtreamSource(name: String, account: XtreamAccount): ImportResult = mutex.withLock {
         val server = normalizeXtreamServer(account.server)
-        if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return ImportResult.Failure("Serveur, identifiant et mot de passe sont requis.")
+        if (server.isEmpty() || account.username.isBlank() || account.password.isEmpty()) return ImportResult.Failure(tr.credentialsRequired)
         val normalized = account.copy(server = server, username = account.username.trim())
         val encrypted = try {
             withContext(Dispatchers.IO) { cipher.encrypt(normalized.password) }
         } catch (error: SecretStoreException) {
-            return ImportResult.Failure(error.message ?: "Stockage sécurisé indisponible.")
+            return ImportResult.Failure(error.message ?: tr.secureStorageUnavailable)
         }
         val source = Source((dao.maxSourceId() ?: 0L) + 1, name, server, SourceKind.XTREAM, username = normalized.username)
         when (val result = importXtream(source, normalized)) {
@@ -680,7 +680,7 @@ class RoomChannelRepository(
     }
 
     override suspend fun refreshSource(id: Long): ImportResult = mutex.withLock {
-        val entity = dao.source(id) ?: return ImportResult.Failure("Source introuvable.")
+        val entity = dao.source(id) ?: return ImportResult.Failure(tr.sourceNotFound)
         val source = entity.toSource()
         val result = if (source.kind == SourceKind.XTREAM) {
             when (val credentials = credentials(entity)) {
@@ -731,7 +731,7 @@ class RoomChannelRepository(
     override suspend fun episode(id: String): Episode? = dao.episode(id)?.toEpisode()
 
     override suspend fun movieDetails(id: String): Fetched<Movie> {
-        val entity = dao.movie(id) ?: return Fetched.Failure("Film introuvable.")
+        val entity = dao.movie(id) ?: return Fetched.Failure(tr.movieNotFound)
         if (entity.detailsLoadedAt != null) return Fetched.Success(entity.toMovie())
         val account = when (val credentials = credentials(entity.sourceId)) {
             is Credentials.Unavailable -> return Fetched.Failure(credentials.message)
@@ -743,7 +743,7 @@ class RoomChannelRepository(
     }
 
     override suspend fun seriesInfo(id: String, refresh: Boolean): Fetched<SeriesInfo> {
-        val entity = dao.series(id) ?: return Fetched.Failure("Série introuvable.")
+        val entity = dao.series(id) ?: return Fetched.Failure(tr.seriesNotFound)
         val cached = entity.detailsLoadedAt != null
         if (cached && !refresh) return Fetched.Success(cachedInfo(entity))
         val account = when (val credentials = credentials(entity.sourceId)) {
@@ -785,11 +785,11 @@ class RoomChannelRepository(
     // --- Programme guide ---
 
     override suspend fun setEpgUrl(sourceId: Long, url: String?): ImportResult = mutex.withLock {
-        val entity = dao.source(sourceId) ?: return ImportResult.Failure("Source introuvable.")
-        if (entity.kind == SourceKind.XTREAM.name) return ImportResult.Failure("Le guide d'un fournisseur Xtream vient de son compte.")
+        val entity = dao.source(sourceId) ?: return ImportResult.Failure(tr.sourceNotFound)
+        if (entity.kind == SourceKind.XTREAM.name) return ImportResult.Failure(tr.xtreamGuideFromAccount)
         val clean = url?.trim()?.ifEmpty { null }
         if (clean != null && !clean.startsWith("http://", ignoreCase = true) && !clean.startsWith("https://", ignoreCase = true)) {
-            return ImportResult.Failure("Seules les adresses http:// et https:// sont acceptées.")
+            return ImportResult.Failure(tr.onlyHttp)
         }
         if (clean == null) {
             database.withTransaction {
@@ -812,7 +812,7 @@ class RoomChannelRepository(
      * Callers hold [mutex].
      */
     private suspend fun importGuide(sourceId: Long): ImportResult {
-        val entity = dao.source(sourceId) ?: return ImportResult.Failure("Source introuvable.")
+        val entity = dao.source(sourceId) ?: return ImportResult.Failure(tr.sourceNotFound)
         val now = clock()
         val xtreamSource = entity.kind == SourceKind.XTREAM.name
         try {
@@ -836,7 +836,7 @@ class RoomChannelRepository(
                     return ImportResult.Success(dao.source(sourceId)!!.toSource())
                 }
             } else {
-                location = entity.epgUrl ?: return ImportResult.Failure("Aucune adresse de guide pour cette source.")
+                location = entity.epgUrl ?: return ImportResult.Failure(tr.noGuideAddress)
             }
             dao.deleteProgrammes(-sourceId)
             val parser = XmltvParser(sourceId, fromMs = now - EpgWindow.BEFORE_MS, toMs = now + EpgWindow.AFTER_MS, channelFilter = filter)
@@ -933,11 +933,11 @@ class RoomChannelRepository(
     }
 
     private suspend fun credentials(sourceId: Long): Credentials =
-        dao.source(sourceId)?.let { credentials(it) } ?: Credentials.Unavailable("Source introuvable.")
+        dao.source(sourceId)?.let { credentials(it) } ?: Credentials.Unavailable(tr.sourceNotFound)
 
     /** Decrypts the stored password; a lost key or a row without one means the user must enter them again. */
     private suspend fun credentials(entity: SourceEntity): Credentials {
-        if (entity.kind != SourceKind.XTREAM.name) return Credentials.Unavailable("Cette source n'est pas un fournisseur Xtream.")
+        if (entity.kind != SourceKind.XTREAM.name) return Credentials.Unavailable(tr.notXtreamSource)
         val username = entity.username ?: return Credentials.Unavailable(CREDENTIALS_TO_REENTER)
         val encrypted = entity.encryptedPassword ?: return Credentials.Unavailable(CREDENTIALS_TO_REENTER)
         val password = withContext(Dispatchers.IO) { cipher.decrypt(encrypted) } ?: return Credentials.Unavailable(CREDENTIALS_TO_REENTER)
@@ -951,7 +951,7 @@ class RoomChannelRepository(
 
     private suspend fun import(source: Source): ImportOutcome = try {
         val parsed = loader.open(source.location, source.kind).use { M3uParser(source.id).parse(it) }
-        if (parsed.channels.isEmpty()) ImportOutcome.Failure("Aucune chaîne trouvée dans cette playlist.")
+        if (parsed.channels.isEmpty()) ImportOutcome.Failure(tr.noChannelInPlaylist)
         else ImportOutcome.Success(source.copy(lastRefreshed = System.currentTimeMillis(), channelCount = parsed.channels.size, lastError = null), parsed)
     } catch (error: Exception) {
         ImportOutcome.Failure(describeImportError(error))
@@ -968,7 +968,7 @@ class RoomChannelRepository(
                 xtream.movieCategories(account, source.id), xtream.movies(account, source.id),
                 xtream.seriesCategories(account, source.id), xtream.series(account, source.id)
             )
-            if (live.channels.isEmpty() && vod.movies.isEmpty() && vod.series.isEmpty()) ImportOutcome.Failure("Ce compte ne donne accès à aucun contenu.")
+            if (live.channels.isEmpty() && vod.movies.isEmpty() && vod.series.isEmpty()) ImportOutcome.Failure(tr.accountNoContent)
             else ImportOutcome.Success(
                 source.copy(
                     lastRefreshed = System.currentTimeMillis(), channelCount = live.channels.size, lastError = null,

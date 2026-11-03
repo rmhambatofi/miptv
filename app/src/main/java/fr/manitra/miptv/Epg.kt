@@ -205,9 +205,9 @@ class XmltvParser(
     }
 
     companion object {
-        const val UNEXPECTED = "Ce fichier n'est pas un guide XMLTV."
-        const val TRUNCATED = "Guide XMLTV incomplet ou illisible."
-        const val UNTITLED = "Sans titre"
+        val UNEXPECTED: String get() = tr.guideNotXmltv
+        val TRUNCATED: String get() = tr.guideTruncated
+        val UNTITLED: String get() = tr.untitled
 
         /** gzip starts with `1f 8b`; anything else is read as is. */
         fun unzipIfNeeded(input: InputStream): InputStream {
@@ -332,12 +332,12 @@ fun resolveOverlaps(programmes: List<Programme>): List<Programme> {
     return out
 }
 
-/** French message for a failed guide download or parse. Never echoes the guide address. */
+/** Message, in the current language, for a failed guide download or parse. Never echoes the guide address. */
 fun describeEpgError(error: Throwable): String = when (error) {
     is EpgException -> error.message ?: XmltvParser.UNEXPECTED
-    is HttpStatusException -> "Le serveur du guide a répondu HTTP ${error.code}."
+    is HttpStatusException -> tr.guideServerHttp(error.code)
     is PlaylistException, is UnknownHostException, is SocketTimeoutException, is SSLException,
     is IllegalArgumentException, is MalformedURLException -> describeImportError(error)
-    is IOException -> "Lecture du guide impossible."
-    else -> "Importation du guide impossible."
+    is IOException -> tr.guideReadFailed
+    else -> tr.guideImportFailed
 }

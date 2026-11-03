@@ -20,7 +20,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Destination(val label: String) { HOME("Accueil"), TV("TV"), MOVIES("Films"), SERIES("Séries"), SEARCH("Recherche") }
+enum class Destination {
+    HOME, TV, MOVIES, SERIES, SEARCH;
+
+    val label: String get() = when (this) { HOME -> tr.home; TV -> tr.tv; MOVIES -> tr.movies; SERIES -> tr.series; SEARCH -> tr.search }
+}
 
 data class ImportStatus(val running: Boolean = false, val message: String? = null, val error: Boolean = false)
 
@@ -487,9 +491,9 @@ class LiveViewModel(
     fun refreshEpg(sourceId: Long) = import(::guideMessage) { repository.refreshEpg(sourceId) }
 
     private fun guideMessage(source: Source): String = when {
-        !source.hasGuide -> "Guide retiré de « ${source.name} »."
-        source.kind == SourceKind.XTREAM && source.programmeCount == 0 -> "Aucune chaîne favorite : le guide de « ${source.name} » suit vos favoris."
-        else -> "${source.programmeCount} programmes dans le guide de « ${source.name} »."
+        !source.hasGuide -> tr.guideRemoved(source.name)
+        source.kind == SourceKind.XTREAM && source.programmeCount == 0 -> tr.guideFollowsFavorites(source.name)
+        else -> tr.guideProgrammes(source.programmeCount, source.name)
     }
 
     // --- films and series ---
@@ -626,10 +630,10 @@ class LiveViewModel(
     fun addUrlSource(name: String, url: String) {
         val location = url.trim()
         if (!location.startsWith("http://", ignoreCase = true) && !location.startsWith("https://", ignoreCase = true)) {
-            mutable.update { it.copy(importStatus = ImportStatus(message = "Adresse invalide : elle doit commencer par http:// ou https://.", error = true)) }
+            mutable.update { it.copy(importStatus = ImportStatus(message = tr.invalidAddressScheme, error = true)) }
             return
         }
-        val label = name.trim().ifEmpty { location.substringAfter("://").substringBefore('/').substringAfter('@').ifEmpty { "Playlist" } }
+        val label = name.trim().ifEmpty { location.substringAfter("://").substringBefore('/').substringAfter('@').ifEmpty { tr.playlistDefaultName } }
         import { repository.addSource(label, location, SourceKind.URL) }
     }
 
@@ -642,7 +646,7 @@ class LiveViewModel(
     fun addXtreamSource(name: String, server: String, username: String, password: String) {
         val normalized = normalizeXtreamServer(server)
         if (normalized.isEmpty() || username.isBlank() || password.isEmpty()) {
-            mutable.update { it.copy(importStatus = ImportStatus(message = "Serveur, identifiant et mot de passe sont requis.", error = true)) }
+            mutable.update { it.copy(importStatus = ImportStatus(message = tr.credentialsRequired, error = true)) }
             return
         }
         val label = name.trim().ifEmpty { normalized.substringAfter("://").substringBefore('/').ifEmpty { "Xtream" } }
@@ -670,13 +674,13 @@ class LiveViewModel(
     }
 
     private fun importedMessage(source: Source): String = when (source.kind) {
-        SourceKind.XTREAM -> "${source.channelCount} chaînes, ${source.movieCount} films et ${source.seriesCount} séries importés depuis « ${source.name} »."
-        else -> "${source.channelCount} chaînes importées depuis « ${source.name} »."
+        SourceKind.XTREAM -> tr.importedXtream(source.channelCount, source.movieCount, source.seriesCount, source.name)
+        else -> tr.importedChannels(source.channelCount, source.name)
     }
 
     private fun import(message: (Source) -> String = ::importedMessage, block: suspend () -> ImportResult) {
         if (mutable.value.importStatus.running) return
-        mutable.update { it.copy(importStatus = ImportStatus(running = true, message = "Importation en cours…"), accountCheck = null) }
+        mutable.update { it.copy(importStatus = ImportStatus(running = true, message = tr.importing), accountCheck = null) }
         viewModelScope.launch {
             val status = when (val result = block()) {
                 is ImportResult.Success -> ImportStatus(message = message(result.source))
@@ -710,9 +714,9 @@ fun dayLabel(dayStartMs: Long, nowMs: Long, zone: java.time.ZoneId = java.time.Z
     val day = java.time.Instant.ofEpochMilli(dayStartMs).atZone(zone).toLocalDate()
     val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
     return when (java.time.temporal.ChronoUnit.DAYS.between(today, day)) {
-        0L -> "Aujourd'hui"
-        1L -> "Demain"
-        else -> day.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.FRANCE))
+        0L -> tr.today
+        1L -> tr.tomorrow
+        else -> day.format(java.time.format.DateTimeFormatter.ofPattern(tr.dayPattern, tr.locale))
     }
 }
 
@@ -724,7 +728,7 @@ fun formatTime(epochMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDe
 fun formatSlot(programme: Programme, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String = "${formatTime(programme.startMs, zone)} – ${formatTime(programme.stopMs, zone)}"
 
 /** « À suivre 20:35 · Météo », or null. */
-fun nextLabel(nowNext: NowNext, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String? = nowNext.next?.let { "À suivre ${formatTime(it.startMs, zone)} · ${it.title}" }
+fun nextLabel(nowNext: NowNext, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String? = nowNext.next?.let { tr.upNext(formatTime(it.startMs, zone), it.title) }
 
 fun Movie.toPlayItem(resumeMs: Long = 0L) = PlayItem(id, title, movieSubtitle(), streamRef().format(), live = false, resumeMs = resumeMs)
 
@@ -739,10 +743,10 @@ fun Movie.movieSubtitle(): String? = listOfNotNull(year?.toString(), durationSec
 
 fun formatDuration(seconds: Int): String {
     val minutes = seconds / 60
-    return if (minutes >= 60) "${minutes / 60} h ${(minutes % 60).toString().padStart(2, '0')}" else "$minutes min"
+    return if (minutes >= 60) tr.durationHours(minutes / 60, (minutes % 60).toString().padStart(2, '0')) else tr.durationMinutes(minutes)
 }
 
-fun formatRating(rating: Double): String = String.format(java.util.Locale.FRANCE, "%.1f", rating)
+fun formatRating(rating: Double): String = String.format(tr.locale, "%.1f", rating)
 
 /** "Reprendre à 42 min" / "Reprendre à 1 h 05". */
-fun resumeLabel(positionMs: Long): String = "Reprendre à ${formatDuration((positionMs / 1000).toInt().coerceAtLeast(60))}"
+fun resumeLabel(positionMs: Long): String = tr.resumeAt(formatDuration((positionMs / 1000).toInt().coerceAtLeast(60)))

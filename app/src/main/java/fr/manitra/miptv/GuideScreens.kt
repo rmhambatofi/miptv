@@ -51,7 +51,7 @@ fun NowLine(nowNext: NowNext, nowMs: Long, modifier: Modifier = Modifier, tint: 
 @Composable
 fun GuideButton(channel: Channel, modifier: Modifier = Modifier, onOpen: (Channel) -> Unit) {
     IconButton(onClick = { onOpen(channel) }, modifier = modifier) {
-        Icon(MiptvIcons.Calendar, contentDescription = "Guide des programmes", tint = Palette.Muted, modifier = Modifier.size(22.dp))
+        Icon(MiptvIcons.Calendar, contentDescription = tr.programmeGuide, tint = Palette.Muted, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -66,7 +66,7 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
     val channel = sheet.channel
     item {
         Row(Modifier.fillMaxWidth().testTag("guide-sheet"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = actions.close, modifier = Modifier.testTag("close-guide")) { Icon(MiptvIcons.Back, contentDescription = "Retour") }
+            IconButton(onClick = actions.close, modifier = Modifier.testTag("close-guide")) { Icon(MiptvIcons.Back, contentDescription = tr.back) }
             ChannelLogo(channel)
             Column(Modifier.weight(1f)) {
                 Text(channel.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2, modifier = Modifier.testTag("guide-title"))
@@ -78,7 +78,7 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
     item {
         if (playback != null && state.selected?.id == channel.id) {
             Preview(playback, state.isFavorite(channel), fullscreen, state.nowNext[channel.id], state.nowMs, channel = channel, subtitle = state.categoryNames[channel.categoryId]) { toggleFavorite(channel) }
-        } else PillButton("Lire", { actions.play(channel) }, Modifier.testTag("guide-play"), icon = MiptvIcons.Play)
+        } else PillButton(tr.watch, { actions.play(channel) }, Modifier.testTag("guide-play"), icon = MiptvIcons.Play)
     }
     val source = state.sources.firstOrNull { it.id == channel.sourceId }
     item {
@@ -86,8 +86,8 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
         if (source?.kind == SourceKind.XTREAM && source.hasGuide && !channel.tvgId.isNullOrBlank() && !state.isFavorite(channel)) {
             Card(Modifier.fillMaxWidth().testTag("guide-limited"), colors = CardDefaults.cardColors(containerColor = Palette.Panel)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Guide limité aux prochaines heures. En favori, la chaîne reçoit le guide complet du fournisseur.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { toggleFavorite(channel) }, modifier = Modifier.testTag("guide-limited-favorite")) { Text("Ajouter aux favoris") }
+                    Text(tr.guideLimited, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { toggleFavorite(channel) }, modifier = Modifier.testTag("guide-limited-favorite")) { Text(tr.addFavorite) }
                 }
             }
         }
@@ -100,22 +100,22 @@ fun LazyListScope.guideSection(state: LiveState, sheet: GuideSheet, playback: Pl
                 val beyond = end != null && day >= end
                 FilterChip(
                     selected = sheet.dayStartMs == day, onClick = { actions.day(day) }, label = { Text(dayLabel(day, state.nowMs)) },
-                    modifier = Modifier.alpha(if (beyond) 0.45f else 1f).semantics { if (beyond) stateDescription = "Sans programme" }.testTag("guide-day-$day")
+                    modifier = Modifier.alpha(if (beyond) 0.45f else 1f).semantics { if (beyond) stateDescription = tr.noProgrammeState }.testTag("guide-day-$day")
                 )
             }
         }
     }
-    item { SectionTitle("Programmes · ${sheet.programmes.size}") }
+    item { SectionTitle("${tr.programmes} · ${sheet.programmes.size}") }
     when {
-        sheet.loading -> item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text("Chargement du guide…") } }
+        sheet.loading -> item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Text(tr.loadingGuide) } }
         sheet.programmes.isEmpty() -> item {
             Text(
                 when {
                     end != null && sheet.dayStartMs >= end ->
-                        "Pas encore de programmes pour ce jour : le guide connu s'arrête ${dayLabel(dayStart(end), state.nowMs).replaceFirstChar { it.lowercase() }} à ${formatTime(end)}."
-                    source != null && !source.hasGuide -> "Aucun guide pour cette source. Ajoutez l'adresse XMLTV de la playlist dans Sources."
-                    source?.kind == SourceKind.XTREAM -> "Aucun programme connu pour cette chaîne. Les favoris reçoivent le guide complet à l'actualisation ; les autres chaînes, les prochains programmes à la lecture."
-                    else -> "Aucun programme ce jour."
+                        tr.guideEndsAt(dayLabel(dayStart(end), state.nowMs), formatTime(end))
+                    source != null && !source.hasGuide -> tr.noGuideForSource
+                    source?.kind == SourceKind.XTREAM -> tr.noProgrammeXtream
+                    else -> tr.noProgrammeToday
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("guide-empty")
             )
@@ -139,7 +139,7 @@ private fun ProgrammeRow(programme: Programme, nowMs: Long) {
                 Text(formatSlot(programme), style = MaterialTheme.typography.bodySmall, color = if (past) Color(0xFF5A6070) else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(96.dp))
                 Column(Modifier.weight(1f)) {
                     Text(programme.title, style = MaterialTheme.typography.titleSmall, color = if (past) Color(0xFF8A90A0) else MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    listOfNotNull(if (live) "En ce moment" else null, programme.episode, programme.category).takeIf { it.isNotEmpty() }?.let {
+                    listOfNotNull(if (live) tr.onNow else null, programme.episode, programme.category).takeIf { it.isNotEmpty() }?.let {
                         Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
                 }
@@ -153,8 +153,8 @@ private fun ProgrammeRow(programme: Programme, nowMs: Long) {
 /** Recherche: programmes to come whose title matches; a hit opens the channel's guide on its day. */
 fun LazyListScope.searchProgrammeSection(state: LiveState, actions: GuideActions) {
     if (!state.hasGuide) return
-    item { SectionTitle("Programmes · ${state.searchProgrammeCount}") }
-    if (state.searchProgrammeCount == 0) item { Text("Aucun programme.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    item { SectionTitle("${tr.programmes} · ${state.searchProgrammeCount}") }
+    if (state.searchProgrammeCount == 0) item { Text(tr.noProgramme, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     items(state.searchProgrammes, key = { "hit-${it.channel.id}-${it.programme.startMs}" }) { hit ->
         val live = hit.programme.isLive(state.nowMs)
         Row(
@@ -165,7 +165,7 @@ fun LazyListScope.searchProgrammeSection(state: LiveState, actions: GuideActions
             Column(Modifier.weight(1f)) {
                 Text(hit.programme.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    (if (live) "En ce moment" else dayLabel(dayStart(hit.programme.startMs), state.nowMs) + " " + formatTime(hit.programme.startMs)) + " · " + hit.channel.name,
+                    (if (live) tr.onNow else dayLabel(dayStart(hit.programme.startMs), state.nowMs) + " " + formatTime(hit.programme.startMs)) + " · " + hit.channel.name,
                     style = MaterialTheme.typography.bodySmall, color = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
@@ -182,27 +182,26 @@ fun SourceGuide(source: Source, busy: Boolean, actions: GuideActions) {
         if (source.kind != SourceKind.XTREAM) {
             OutlinedTextField(
                 value = url, onValueChange = { url = it }, singleLine = true,
-                label = { Text("Guide des programmes (XMLTV)") }, placeholder = { Text("https://exemple.tld/guide.xml.gz") },
-                supportingText = { Text("Préremplie par l'en-tête url-tvg de la playlist, quand il existe.") },
+                label = { Text(tr.epgFieldLabel) }, placeholder = { Text(tr.epgPlaceholder) },
+                supportingText = { Text(tr.epgFieldHint) },
                 modifier = Modifier.fillMaxWidth().testTag("epg-url-${source.id}")
             )
         }
         Text(
             when {
-                !source.hasGuide -> "Aucun guide."
-                source.epgRefreshedAt == null -> if (source.kind == SourceKind.XTREAM) "Guide des favoris jamais chargé." else "Guide jamais chargé."
-                else -> (if (source.kind == SourceKind.XTREAM) "Guide des favoris · " else "Guide · ") +
-                    "${source.programmeCount} programmes · actualisé le ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(source.epgRefreshedAt))}"
+                !source.hasGuide -> tr.noGuide
+                source.epgRefreshedAt == null -> if (source.kind == SourceKind.XTREAM) tr.favoritesGuideNeverLoaded else tr.guideNeverLoaded
+                else -> tr.guideStatus(source.kind == SourceKind.XTREAM, source.programmeCount, formatDateTime(source.epgRefreshedAt))
             },
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("epg-status-${source.id}")
         )
         source.epgError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("epg-error-${source.id}")) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (source.kind != SourceKind.XTREAM && url.trim() != source.epgUrl.orEmpty()) {
-                TextButton(onClick = { actions.setEpgUrl(source.id, url) }, enabled = !busy, modifier = Modifier.testTag("save-epg-${source.id}")) { Text(if (url.isBlank()) "Retirer le guide" else "Enregistrer le guide") }
+                TextButton(onClick = { actions.setEpgUrl(source.id, url) }, enabled = !busy, modifier = Modifier.testTag("save-epg-${source.id}")) { Text(if (url.isBlank()) tr.removeGuide else tr.saveGuide) }
             }
             if (source.hasGuide) {
-                TextButton(onClick = { actions.refreshEpg(source.id) }, enabled = !busy, modifier = Modifier.testTag("refresh-epg-${source.id}")) { Text("Actualiser le guide") }
+                TextButton(onClick = { actions.refreshEpg(source.id) }, enabled = !busy, modifier = Modifier.testTag("refresh-epg-${source.id}")) { Text(tr.refreshGuide) }
             }
         }
     }
