@@ -170,6 +170,12 @@ interface Texts {
     /** Language picker of the settings. */
     val language: String
     fun systemLanguage(name: String): String
+
+    /** Theme picker of the settings. */
+    val theme: String
+    val themeSystem: String
+    val themeLight: String
+    val themeDark: String
     val m3uPlaylist: String
     val xtreamProvider: String
     val newSource: String

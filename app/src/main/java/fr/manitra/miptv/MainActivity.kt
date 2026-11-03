@@ -3,10 +3,12 @@ package fr.manitra.miptv
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.shrinkVertically
@@ -35,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -67,7 +70,7 @@ class MainActivity : ComponentActivity() {
         // A change of language recreates the activity (locale is not in configChanges): the texts follow it here,
         // the language chosen in the settings first.
         I18n.apply(this, resources.configuration)
-        enableEdgeToEdge()
+        applyTheme()
         setContent {
             val app = application as MiptvApplication
             val model: LiveViewModel = viewModel(factory = viewModelFactory {
@@ -79,6 +82,29 @@ class MainActivity : ComponentActivity() {
             FullscreenEffect(state.fullscreen && !splash)
             MiptvTheme { if (splash) Splash { splash = false } else PhoneApp(state, model.actions(), model.feeds()) }
         }
+    }
+
+    // uiMode is in configChanges: the device switching to dark mode lands here, for the theme that follows it.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyTheme()
+    }
+
+    /** Takes the colours of the theme chosen in the settings ([ThemeChoice]), with system bar icons and window ground to match. */
+    fun applyTheme() {
+        val deviceDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val colors = ThemeChoice.get(this).colors(deviceDark)
+        Palette.colors = colors
+        val transparent = android.graphics.Color.TRANSPARENT
+        if (colors.light) enableEdgeToEdge(SystemBarStyle.light(transparent, transparent), SystemBarStyle.light(LIGHT_SCRIM, DARK_SCRIM))
+        else enableEdgeToEdge(SystemBarStyle.dark(transparent), SystemBarStyle.dark(DARK_SCRIM))
+        window.setBackgroundDrawable(ColorDrawable(colors.ink.toArgb()))
+    }
+
+    private companion object {
+        // The scrims enableEdgeToEdge puts behind three-button navigation by default.
+        const val LIGHT_SCRIM = 0xE6FFFFFF.toInt()
+        const val DARK_SCRIM = 0x801B1B1B.toInt()
     }
 }
 
@@ -104,12 +130,14 @@ fun FullscreenEffect(fullscreen: Boolean) {
 
 @Composable
 fun MiptvTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(
-        background = Palette.Ink, surface = Palette.Panel, surfaceVariant = Palette.Raised,
-        surfaceContainer = Palette.Panel, surfaceContainerHigh = Palette.Raised, surfaceContainerHighest = Palette.Raised,
-        primary = Palette.Accent, onPrimary = Color(0xFF330010), primaryContainer = Palette.AccentSoft, onPrimaryContainer = Palette.Text,
-        secondary = Palette.Link, secondaryContainer = Palette.AccentSoft, onSecondaryContainer = Palette.Text,
-        onBackground = Palette.Text, onSurface = Palette.Text, onSurfaceVariant = Palette.Muted, outline = Palette.Dim, outlineVariant = Palette.Raised
+    val colors = Palette.colors
+    val scheme = if (colors.light) lightColorScheme() else darkColorScheme()
+    MaterialTheme(colorScheme = scheme.copy(
+        background = colors.ink, surface = colors.panel, surfaceVariant = colors.raised,
+        surfaceContainer = colors.panel, surfaceContainerHigh = colors.raised, surfaceContainerHighest = colors.raised,
+        primary = colors.accent, onPrimary = colors.onAccent, primaryContainer = colors.accentSoft, onPrimaryContainer = colors.text,
+        secondary = colors.link, secondaryContainer = colors.accentSoft, onSecondaryContainer = colors.text,
+        onBackground = colors.text, onSurface = colors.text, onSurfaceVariant = colors.muted, outline = colors.dim, outlineVariant = colors.raised
     ), content = content)
 }
 
@@ -327,7 +355,7 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
     }
     Box(Modifier.fillMaxWidth().height(500.dp).testTag("home-hero")) {
         if (slides.isEmpty()) {
-            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844)))))
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Palette.colors.heroStart, Palette.colors.heroEnd))))
             HeroShade()
             Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(tr.tagline, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, lineHeight = 34.sp)
@@ -392,7 +420,7 @@ fun BoxScope.HeroShade() {
 /** Full-bleed picture behind a hero, or a labelled tinted ground when there is none. */
 @Composable
 fun BoxScope.Backdrop(url: String?, placeholder: String) {
-    Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(Color(0xFF412036), Color(0xFF192844)))), contentAlignment = Alignment.Center) {
+    Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(Palette.colors.heroStart, Palette.colors.heroEnd))), contentAlignment = Alignment.Center) {
         if (url != null) SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
             error = { HeroPlaceholder(placeholder) }, loading = { })
         else HeroPlaceholder(placeholder)

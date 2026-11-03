@@ -44,11 +44,12 @@ class SourceActions(
 )
 
 /**
- * Settings screen: the language of the interface, then the sources: an M3U playlist by URL or local file (SAF), or an Xtream provider by server, user name and password.
+ * Settings screen: the language and the theme of the interface, then the sources: an M3U playlist by URL or local file (SAF), or an Xtream provider by server, user name and password.
  * Locations are shown host-only and the password is masked; neither is ever logged.
  */
 fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
     item(key = "language") { LanguageCard() }
+    item(key = "theme") { ThemeCard() }
     item { Text(tr.sources, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     item { Text(tr.sourcesIntro, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     item { AddSourceCard(state, actions) }
@@ -78,18 +79,36 @@ private fun LanguageCard() {
     val chosen = remember { LanguageChoice.get(context) }
     val device = remember { LanguageChoice.device(context) }
     val options: List<Pair<Language?, String>> = listOf(null to tr.systemLanguage(device.nativeName)) + Language.entries.map { it to it.nativeName }
-    Card(Modifier.fillMaxWidth().testTag("language-card")) {
+    ChoiceCard(tr.language, "language", options, chosen, tagOf = { it?.tag ?: "system" }) { language ->
+        context.findActivity()?.let { LanguageChoice.set(it, language) }
+    }
+}
+
+/** Theme of the interface: dark (the default), light, or the device's. It applies at once (see [ThemeChoice]). */
+@Composable
+private fun ThemeCard() {
+    val context = LocalContext.current
+    var chosen by remember { mutableStateOf(ThemeChoice.get(context)) }
+    ChoiceCard(tr.theme, "theme", ThemeMode.entries.map { it to it.label }, chosen, tagOf = { it.key }) { mode ->
+        ThemeChoice.set(context, mode)
+        chosen = mode
+        (context.findActivity() as? MainActivity)?.applyTheme()
+    }
+}
+
+/** A titled card of radio rows, tagged « [tag]-card » and « [tag]-<option> »; [onChoose] gets an option other than [chosen]. */
+@Composable
+private fun <T> ChoiceCard(title: String, tag: String, options: List<Pair<T, String>>, chosen: T, tagOf: (T) -> String, onChoose: (T) -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("$tag-card")) {
         Column(Modifier.padding(vertical = 8.dp).selectableGroup()) {
-            Text(tr.language, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            options.forEach { (language, label) ->
-                val selected = language == chosen
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            options.forEach { (option, label) ->
+                val selected = option == chosen
                 Row(
                     Modifier.fillMaxWidth()
-                        .selectable(selected = selected, role = Role.RadioButton, onClick = {
-                            if (!selected) context.findActivity()?.let { LanguageChoice.set(it, language) }
-                        })
+                        .selectable(selected = selected, role = Role.RadioButton, onClick = { if (!selected) onChoose(option) })
                         .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .testTag("language-${language?.tag ?: "system"}"),
+                        .testTag("$tag-${tagOf(option)}"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RadioButton(selected = selected, onClick = null)

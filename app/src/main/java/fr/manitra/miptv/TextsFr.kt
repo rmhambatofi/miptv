@@ -164,6 +164,10 @@ object FrenchTexts : Texts {
 
     override val language: String = "Langue"
     override fun systemLanguage(name: String): String = "Langue de l'appareil ($name)"
+    override val theme: String = "Thème"
+    override val themeSystem: String = "Thème de l'appareil"
+    override val themeLight: String = "Clair"
+    override val themeDark: String = "Sombre"
     override val m3uPlaylist: String = "Playlist M3U"
     override val xtreamProvider: String = "Fournisseur Xtream"
     override val newSource: String = "Nouvelle source"

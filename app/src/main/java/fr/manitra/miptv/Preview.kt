@@ -352,7 +352,7 @@ fun LivePlayer(
 @Composable
 private fun OverlayButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 44.dp, background: Color = Color.Transparent) {
     IconButton(onClick = onClick, modifier = modifier.size(size).clip(CircleShape).background(background)) {
-        Icon(icon, contentDescription = label, tint = Palette.Text, modifier = Modifier.size(if (size > 56.dp) 32.dp else 24.dp))
+        Icon(icon, contentDescription = label, tint = Palette.Video.text, modifier = Modifier.size(if (size > 56.dp) 32.dp else 24.dp))
     }
 }
 
@@ -361,8 +361,8 @@ private fun OverlayButton(icon: ImageVector, label: String, onClick: () -> Unit,
 private fun PlayerStatus(playback: Playback, modifier: Modifier = Modifier) {
     if (playback.ready && !playback.failed) return
     Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(playback.status, color = Palette.Text, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.testTag("player-status"))
-        if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp)
+        Text(playback.status, color = Palette.Video.text, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.testTag("player-status"))
+        if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp, colors = Palette.Video)
     }
 }
 
@@ -441,8 +441,8 @@ fun SidewaysVodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClo
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(playback.item.title, color = Palette.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    playback.item.subtitle?.let { Text(it, color = Palette.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    Text(playback.item.title, color = Palette.Video.text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    playback.item.subtitle?.let { Text(it, color = Palette.Video.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 OverlayButton(MiptvIcons.Close, tr.closePlayer, onClose, Modifier.testTag("close-player"))
             }
@@ -450,8 +450,8 @@ fun SidewaysVodPlayer(playback: Playback, onFullscreen: (Boolean) -> Unit, onClo
         if (playback.failed || (playback.ended && onNext != null)) {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(playback.status, color = Color.White, modifier = Modifier.testTag("player-status"))
-                if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp)
-                if (playback.ended && onNext != null) PillButton(tr.nextEpisode, onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, height = 40.dp)
+                if (playback.failed) PillButton(tr.retry, playback::retry, Modifier.testTag("retry"), height = 40.dp, colors = Palette.Video)
+                if (playback.ended && onNext != null) PillButton(tr.nextEpisode, onNext, Modifier.testTag("next-episode"), icon = MiptvIcons.Next, height = 40.dp, colors = Palette.Video)
             }
         }
     }
@@ -474,14 +474,14 @@ fun FullscreenPlayer(
             IconButton(onClick = onExit, modifier = Modifier.testTag("exit-fullscreen")) { Icon(MiptvIcons.Back, contentDescription = tr.exitFullscreen, tint = Color.White) }
             Column(Modifier.weight(1f)) {
                 Text(playback.item.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                playback.item.subtitle?.let { Text(it, color = Palette.Muted, fontSize = 13.sp, maxLines = 1) }
+                playback.item.subtitle?.let { Text(it, color = Palette.Video.muted, fontSize = 13.sp, maxLines = 1) }
             }
         }
         if (playback.failed || (playback.ended && onNext != null)) {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(playback.status, color = Color.White)
-                if (playback.failed) PillButton(tr.retry, playback::retry, height = 40.dp)
-                if (playback.ended && onNext != null) PillButton(tr.nextEpisode, onNext, icon = MiptvIcons.Next, height = 40.dp)
+                if (playback.failed) PillButton(tr.retry, playback::retry, height = 40.dp, colors = Palette.Video)
+                if (playback.ended && onNext != null) PillButton(tr.nextEpisode, onNext, icon = MiptvIcons.Next, height = 40.dp, colors = Palette.Video)
             }
         }
     }
@@ -508,14 +508,14 @@ private fun LiveFullscreen(
                 ) {
                     OverlayButton(MiptvIcons.Back, tr.exitFullscreen, onExit, Modifier.testTag("exit-fullscreen"))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(playback.item.title, color = Palette.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (nowNext != null) Text("${nowNext.now.title} · ${formatSlot(nowNext.now)}", color = Palette.Muted, fontSize = 13.sp, maxLines = 1,
+                        Text(playback.item.title, color = Palette.Video.text, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (nowNext != null) Text("${nowNext.now.title} · ${formatSlot(nowNext.now)}", color = Palette.Video.muted, fontSize = 13.sp, maxLines = 1,
                             overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("fullscreen-now"))
                     }
                     LiveBadge()
                 }
                 Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val dim = Palette.Ink.copy(alpha = 0.6f)
+                    val dim = Palette.Video.ink.copy(alpha = 0.6f)
                     // Missing neighbours keep their place so pause stays in the middle.
                     if (onPreviousChannel != null) OverlayButton(MiptvIcons.Previous, tr.previousChannel, onPreviousChannel, Modifier.testTag("previous-channel"), 56.dp, dim)
                     else Spacer(Modifier.size(56.dp))
@@ -530,8 +530,8 @@ private fun LiveFullscreen(
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (nowNext != null) {
-                        ProgressLine(nowNext.now.progress(nowMs), Modifier.width(240.dp), height = 4.dp, track = Palette.Text.copy(alpha = 0.25f))
-                        nextLabel(nowNext)?.let { Text(it, color = Palette.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)) }
+                        ProgressLine(nowNext.now.progress(nowMs), Modifier.width(240.dp), height = 4.dp, track = Palette.Video.text.copy(alpha = 0.25f))
+                        nextLabel(nowNext)?.let { Text(it, color = Palette.Video.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)) }
                             ?: Spacer(Modifier.weight(1f))
                     } else Spacer(Modifier.weight(1f))
                     OverlayButton(if (playback.muted) MiptvIcons.Muted else MiptvIcons.Volume, if (playback.muted) tr.unmute else tr.mute, playback::toggleMute)
