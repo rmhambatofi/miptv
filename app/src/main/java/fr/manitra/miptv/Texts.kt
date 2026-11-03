@@ -18,6 +18,8 @@ interface Texts {
     val series: String
     val search: String
     val sources: String
+    /** Title of the settings screen (sources, language), behind the gear. */
+    val settings: String
     val channels: String
     val programmes: String
     val categories: String

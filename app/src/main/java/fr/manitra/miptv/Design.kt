@@ -106,7 +106,7 @@ fun AppHeader(title: String, sourcesOpen: Boolean, onSources: (Boolean) -> Unit)
         Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
         IconButton(onClick = { onSources(!sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
-            Icon(MiptvIcons.Settings, contentDescription = tr.sources, tint = if (sourcesOpen) Palette.Accent else Palette.Muted)
+            Icon(MiptvIcons.Settings, contentDescription = tr.settings, tint = if (sourcesOpen) Palette.Accent else Palette.Muted)
         }
     }
 }

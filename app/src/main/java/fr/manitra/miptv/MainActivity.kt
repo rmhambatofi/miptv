@@ -253,7 +253,7 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             when {
                 state.sourcesOpen -> {
-                    BackHeader(tr.sources, { actions.openSources(false) }, "close-sources")
+                    BackHeader(tr.settings, { actions.openSources(false) }, "close-sources")
                     ContentList(scrollState, padded = true) { sourcesSection(state, actions.sources) }
                 }
                 guideOpen -> ContentList(scrollState, padded = true) {
@@ -377,7 +377,7 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
             Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
             Text(tr.home, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
             IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
-                Icon(MiptvIcons.Settings, contentDescription = tr.sources)
+                Icon(MiptvIcons.Settings, contentDescription = tr.settings)
             }
         }
     }

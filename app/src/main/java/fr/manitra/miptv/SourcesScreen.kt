@@ -44,10 +44,12 @@ class SourceActions(
 )
 
 /**
- * Sources: an M3U playlist by URL or local file (SAF), or an Xtream provider by server, user name and password.
+ * Settings screen: the language of the interface, then the sources: an M3U playlist by URL or local file (SAF), or an Xtream provider by server, user name and password.
  * Locations are shown host-only and the password is masked; neither is ever logged.
  */
 fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
+    item(key = "language") { LanguageCard() }
+    item { Text(tr.sources, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     item { Text(tr.sourcesIntro, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     item { AddSourceCard(state, actions) }
     item {
@@ -64,7 +66,6 @@ fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
     item { Text(tr.configuredSources(state.sources.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     if (state.sources.isEmpty()) item { Text(tr.noSourceYet, modifier = Modifier.testTag("no-sources")) }
     items(state.sources, key = { "source-${it.id}" }) { source -> SourceCard(source, state.importStatus.running, actions.guide, { actions.refresh(source.id) }, { actions.remove(source.id) }) }
-    item(key = "language") { LanguageCard() }
 }
 
 /**
