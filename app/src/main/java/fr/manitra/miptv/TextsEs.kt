@@ -168,6 +168,8 @@ object SpanishTexts : Texts {
     override val themeSystem: String = "Tema del dispositivo"
     override val themeLight: String = "Claro"
     override val themeDark: String = "Oscuro"
+    override val glassEffect: String = "Efecto liquid glass"
+    override val glassEffectHint: String = "Barras y botones de cristal translúcido, sobre el tema elegido."
     override val m3uPlaylist: String = "Lista M3U"
     override val xtreamProvider: String = "Proveedor Xtream"
     override val newSource: String = "Nueva fuente"

@@ -83,6 +83,8 @@ dependencies {
     implementation("androidx.paging:paging-runtime-ktx:3.3.6")
     implementation("androidx.paging:paging-compose:3.3.6")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Backdrop blur of the liquid glass option (Compose 1.7 line).
+    implementation("dev.chrisbanes.haze:haze:1.2.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     testImplementation("junit:junit:4.13.2")

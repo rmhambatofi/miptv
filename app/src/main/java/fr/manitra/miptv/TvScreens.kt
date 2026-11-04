@@ -91,7 +91,8 @@ private fun ColumnScope.CategoriesPage(state: LiveState, actions: PhoneActions, 
             item { Spacer(Modifier.height(72.dp)) }
         }
         Row(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).shadow(16.dp, RoundedCornerShape(50)).clip(RoundedCornerShape(50)).background(Palette.Panel).padding(4.dp)
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp + LocalBottomBarSpace.current)
+                .then(if (Palette.glass) Modifier.glass(RoundedCornerShape(50)) else Modifier.shadow(16.dp, RoundedCornerShape(50)).clip(RoundedCornerShape(50)).background(Palette.Panel)).padding(4.dp)
         ) {
             ViewChoice(tr.coverView, MiptvIcons.Grid, cover, Modifier.testTag("categories-cover")) { cover = true }
             ViewChoice(tr.listView, MiptvIcons.List, !cover, Modifier.testTag("categories-list")) { cover = false }
@@ -130,7 +131,7 @@ private fun CategoryRow(category: Category, onClick: () -> Unit) {
 private fun CategoryTile(category: Category, modifier: Modifier, onClick: () -> Unit) {
     val (zone, name) = splitZone(category.name)
     Column(
-        modifier.height(96.dp).clip(RoundedCornerShape(14.dp)).background(Palette.Panel).clickable(onClick = onClick).padding(14.dp).testTag("category-${category.id}"),
+        modifier.height(96.dp).surface(RoundedCornerShape(14.dp), Palette.Panel, Glass.THIN).clickable(onClick = onClick).padding(14.dp).testTag("category-${category.id}"),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Text(zone.orEmpty(), color = Palette.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
@@ -287,8 +288,9 @@ private fun PlayerCategories(state: LiveState, onCategory: (String) -> Unit) {
 @Composable
 private fun MiniPlayer(channel: Channel, state: LiveState, playback: Playback, actions: PhoneActions) {
     Row(
-        Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel)
-            .drawBehind { drawLine(Palette.Raised, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
+        // Under the glass option, a floating capsule just above the floating tab bar.
+        (if (Palette.glass) Modifier.padding(start = 12.dp, end = 12.dp, bottom = LocalBottomBarSpace.current).fillMaxWidth().height(64.dp).glass(RoundedCornerShape(20.dp))
+        else Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel).drawBehind { drawLine(Palette.Raised, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) })
             .clickable(onClick = actions.expandPlayer).testTag("mini-player"),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {

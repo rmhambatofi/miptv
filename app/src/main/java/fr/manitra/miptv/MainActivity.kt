@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -62,6 +63,8 @@ import androidx.paging.compose.itemKey
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.SubcomposeAsyncImage
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.flow.Flow
 
 class MainActivity : ComponentActivity() {
@@ -95,6 +98,7 @@ class MainActivity : ComponentActivity() {
         val deviceDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         val colors = ThemeChoice.get(this).colors(deviceDark)
         Palette.colors = colors
+        Palette.glass = GlassChoice.get(this)
         val transparent = android.graphics.Color.TRANSPARENT
         if (colors.light) enableEdgeToEdge(SystemBarStyle.light(transparent, transparent), SystemBarStyle.light(LIGHT_SCRIM, DARK_SCRIM))
         else enableEdgeToEdge(SystemBarStyle.dark(transparent), SystemBarStyle.dark(DARK_SCRIM))
@@ -262,13 +266,18 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
     BackHandler(!state.sourcesOpen && !sheetOpen && !guideOpen && !(inTv && (playerShown || state.channelsOpen)) && state.destination != Destination.HOME) {
         actions.navigate(Destination.HOME)
     }
-    Scaffold(containerColor = Palette.Ink, bottomBar = {
+    val navBar = @Composable {
         AnimatedVisibility(
             !(tapToLower && barLowered),
             enter = slideInVertically { it } + expandVertically(expandFrom = Alignment.Top),
             exit = slideOutVertically { it } + shrinkVertically(shrinkTowards = Alignment.Top)
         ) { MiptvNavBar(if (state.sourcesOpen) null else state.destination, actions.navigate) }
-    }) { padding ->
+    }
+    // Under the glass option the bar floats over the screen, which scrolls and blurs under it. A player turned
+    // sideways keeps the bar below its picture, so the bar never covers the video's controls.
+    val floatingBar = Palette.glass && !tapToLower
+    val glassSource = remember { HazeState() }
+    Scaffold(containerColor = Palette.Ink, bottomBar = { if (!floatingBar) navBar() }) { padding ->
         val guide = state.guideSheet
         val scrollState = key(state.destination, state.sourcesOpen, state.channelsOpen, state.playerOpen && state.selected != null, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
         // Once the day's programmes arrive, show the one on air (or the searched one) first.
@@ -278,7 +287,12 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
             val index = guide.programmes.indexOfFirst { it.startMs == target }
             if (index > 0) scrollState.scrollToItem(GUIDE_HEADER_ITEMS + index)
         }
-        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+        CompositionLocalProvider(
+            LocalGlassSource provides if (floatingBar) glassSource else null,
+            LocalBottomBarSpace provides if (floatingBar) GlassNavSpace else 0.dp
+        ) {
+        Column(Modifier.fillMaxSize().then(if (floatingBar) Modifier.hazeSource(glassSource) else Modifier)) {
             when {
                 state.sourcesOpen -> {
                     BackHeader(tr.settings, { actions.openSources(false) }, "close-sources")
@@ -297,16 +311,21 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
                 }
             }
         }
+        if (floatingBar) Box(Modifier.align(Alignment.BottomCenter)) { navBar() }
+        }
+        }
     }
 }
 
 /** The scrolling body of every screen. [padded] lists get side margins; others lay out edge to edge. */
 @Composable
 fun ContentList(listState: LazyListState, padded: Boolean = false, spacing: Dp = 16.dp, content: LazyListScope.() -> Unit) {
+    // The last rows scroll clear of a floating glass bar.
+    val bar = LocalBottomBarSpace.current
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().imePadding().testTag("content"),
-        contentPadding = if (padded) PaddingValues(16.dp) else PaddingValues(bottom = 24.dp),
+        contentPadding = if (padded) PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bar) else PaddingValues(bottom = 24.dp + bar),
         verticalArrangement = Arrangement.spacedBy(spacing),
         content = content
     )
@@ -404,7 +423,10 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
         Box(Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp)) {
             Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
             Text(tr.home, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
-            IconButton(onClick = { actions.openSources(!state.sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
+            IconButton(
+                onClick = { actions.openSources(!state.sourcesOpen) },
+                modifier = Modifier.align(Alignment.CenterEnd).then(if (Palette.glass) Modifier.size(44.dp).glass(CircleShape) else Modifier).testTag("open-sources")
+            ) {
                 Icon(MiptvIcons.Settings, contentDescription = tr.settings)
             }
         }
@@ -495,7 +517,7 @@ private fun LazyListScope.searchSection(state: LiveState, pages: ChannelPages, a
 /** Channel logo on a raised tile; without a picture, the short name of the channel. */
 @Composable
 fun ChannelLogo(channel: Channel, modifier: Modifier = Modifier, size: Dp = 52.dp, corner: Dp = 12.dp, highlight: Boolean = false) {
-    Box(modifier.size(size).clip(RoundedCornerShape(corner)).background(Palette.Raised), contentAlignment = Alignment.Center) {
+    Box(modifier.size(size).surface(RoundedCornerShape(corner), Palette.Raised, Glass.THIN), contentAlignment = Alignment.Center) {
         val short = @Composable {
             // Smaller tiles get a smaller type, so a word is not cut in two.
             val type = (size.value / 5f).coerceIn(9f, 13f)

@@ -127,6 +127,8 @@ https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4
         compose.onNodeWithTag("nav-TV").performClick()
         compose.onNodeWithTag("no-source").assertIsDisplayed()
         compose.onNodeWithTag("add-source").performClick()
+        // The form sits under the language, theme and glass cards.
+        scrollTo("source-url")
         compose.onNodeWithTag("source-url").assertIsDisplayed()
         compose.onNodeWithTag("source-url").performTextInput("https://demo.example/list.m3u")
         hideKeyboard()
