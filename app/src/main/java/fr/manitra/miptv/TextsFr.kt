@@ -168,6 +168,8 @@ object FrenchTexts : Texts {
     override val themeSystem: String = "Thème de l'appareil"
     override val themeLight: String = "Clair"
     override val themeDark: String = "Sombre"
+    override val glassEffect: String = "Effet liquid glass"
+    override val glassEffectHint: String = "Barres et boutons en verre translucide, sur le thème choisi."
     override val m3uPlaylist: String = "Playlist M3U"
     override val xtreamProvider: String = "Fournisseur Xtream"
     override val newSource: String = "Nouvelle source"

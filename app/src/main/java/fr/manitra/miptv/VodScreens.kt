@@ -220,7 +220,7 @@ private fun LazyListScope.seriesSheet(state: LiveState, sheet: SeriesSheet, play
             items(info.seasons, key = { it.number }) { season ->
                 val selected = sheet.season == season.number
                 Box(
-                    Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(if (selected) Palette.AccentSoft else Palette.Panel)
+                    Modifier.height(40.dp).then(if (Palette.glass) Modifier.glass(RoundedCornerShape(20.dp), if (selected) Glass.TINT else Glass.THIN) else Modifier.clip(RoundedCornerShape(20.dp)).background(if (selected) Palette.AccentSoft else Palette.Panel))
                         .clickable { actions.selectSeason(season.number) }.padding(horizontal = 16.dp).testTag("season-${season.number}"),
                     contentAlignment = Alignment.Center
                 ) { Text("${season.name} · ${season.episodeCount}", color = if (selected) Palette.Text else Palette.Muted, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
@@ -332,14 +332,14 @@ private fun ColumnScope.CatalogueScreen(
     var searching by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.weight(1f)) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel).padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.topBar().padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (available) {
                     IconButton(onClick = { searching = !searching }, modifier = Modifier.testTag("$tag-filter-toggle")) {
                         Icon(MiptvIcons.Search, contentDescription = filterLabel, tint = if (searching || filter.isNotEmpty()) Palette.Accent else Palette.Muted)
                     }
                     Row(
-                        Modifier.height(44.dp).widthIn(max = 200.dp).clip(RoundedCornerShape(22.dp)).background(Palette.Raised).clickable { menuOpen = true }
+                        Modifier.height(44.dp).widthIn(max = 200.dp).surface(RoundedCornerShape(22.dp), Palette.Raised, Glass.THIN).clickable { menuOpen = true }
                             .padding(start = 16.dp, end = 14.dp).testTag("$tag-category-pill"),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -361,10 +361,11 @@ private fun ColumnScope.CatalogueScreen(
 
 @Composable
 private fun BoxScope.CategoryMenu(categories: List<Category>, selectedId: String, tag: String, onClose: () -> Unit, onPick: (String) -> Unit) {
-    Box(Modifier.matchParentSize().background(Palette.Ink.copy(alpha = 0.6f)).clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClose))
+    Box(Modifier.matchParentSize().background(Palette.Ink.copy(alpha = if (Palette.glass) 0.4f else 0.6f)).clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClose))
     Column(
-        Modifier.align(Alignment.TopEnd).padding(12.dp).width(300.dp).heightIn(max = 620.dp).shadow(16.dp, RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp)).background(Palette.Panel).padding(8.dp).testTag("$tag-category-menu")
+        Modifier.align(Alignment.TopEnd).padding(12.dp).width(300.dp).heightIn(max = 620.dp)
+            .then(if (Palette.glass) Modifier.glass(RoundedCornerShape(22.dp)) else Modifier.shadow(16.dp, RoundedCornerShape(22.dp)).clip(RoundedCornerShape(22.dp)).background(Palette.Panel))
+            .padding(8.dp).testTag("$tag-category-menu")
     ) {
         Row(Modifier.fillMaxWidth().padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(tr.categories, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -418,7 +419,7 @@ private fun SheetHero(title: String, meta: String, metaTag: String, imageUrl: St
     Box(Modifier.fillMaxWidth().height(height)) {
         Backdrop(imageUrl, placeholder)
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Palette.Ink)))
-        IconButton(onClick = onBack, modifier = Modifier.padding(14.dp).size(44.dp).clip(CircleShape).background(Palette.Ink.copy(alpha = 0.6f)).testTag("close-sheet")) {
+        IconButton(onClick = onBack, modifier = Modifier.padding(14.dp).size(44.dp).surface(CircleShape, Palette.Ink.copy(alpha = 0.6f)).testTag("close-sheet")) {
             Icon(MiptvIcons.Back, contentDescription = tr.back)
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {

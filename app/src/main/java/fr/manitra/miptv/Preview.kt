@@ -351,7 +351,9 @@ fun LivePlayer(
 
 @Composable
 private fun OverlayButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 44.dp, background: Color = Color.Transparent) {
-    IconButton(onClick = onClick, modifier = modifier.size(size).clip(CircleShape).background(background)) {
+    // A round button with a ground becomes dark glass under the glass option.
+    val ground = if (background != Color.Transparent) Modifier.surface(CircleShape, background, Glass.MEDIA) else Modifier.clip(CircleShape)
+    IconButton(onClick = onClick, modifier = modifier.size(size).then(ground)) {
         Icon(icon, contentDescription = label, tint = Palette.Video.text, modifier = Modifier.size(if (size > 56.dp) 32.dp else 24.dp))
     }
 }

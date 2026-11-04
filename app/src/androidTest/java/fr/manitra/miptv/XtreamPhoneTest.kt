@@ -44,6 +44,8 @@ class XtreamPhoneTest {
         compose.onNodeWithTag("nav-MOVIES").performClick()
         compose.onNodeWithTag("no-provider").assertIsDisplayed()
         compose.onNodeWithTag("add-provider").performClick()
+        // The form sits under the language, theme and glass cards.
+        scrollTo("form-XTREAM")
         compose.onNodeWithTag("form-XTREAM").performClick()
         compose.onNodeWithTag("xtream-server").performTextInput("portal.example:8080")
         compose.onNodeWithTag("xtream-username").performTextInput("u-test")

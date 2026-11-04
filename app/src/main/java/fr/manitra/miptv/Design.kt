@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +64,9 @@ val LightColors = ThemeColors(
 object Palette {
     var colors: ThemeColors by mutableStateOf(DarkColors)
 
+    /** The liquid glass option ([GlassChoice]), over whichever theme is chosen. */
+    var glass: Boolean by mutableStateOf(false)
+
     /** Over a video, whatever the theme. */
     val Video: ThemeColors get() = DarkColors
 
@@ -68,7 +74,8 @@ object Palette {
     val Panel get() = colors.panel
     val Raised get() = colors.raised
     val Accent get() = colors.accent
-    val AccentSoft get() = colors.accentSoft
+    /** Behind a selected item; translucent accent under the glass option, so the glass shows through. */
+    val AccentSoft get() = if (glass) colors.accent.copy(alpha = if (colors.light) 0.12f else 0.18f) else colors.accentSoft
     val Text get() = colors.text
     val Muted get() = colors.muted
     val Dim get() = colors.dim
@@ -164,10 +171,16 @@ fun splitZone(name: String): Pair<String?, String> {
     return match.groupValues[1].uppercase() to match.groupValues[2].trim()
 }
 
+/** The bar at the top of a screen: the panel colour, or a floating glass capsule under the glass option. */
+@Composable
+fun Modifier.topBar(): Modifier =
+    if (Palette.glass) fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp).height(56.dp).glass(RoundedCornerShape(28.dp))
+    else fillMaxWidth().height(64.dp).background(Palette.Panel)
+
 /** Bar of a screen without a back button: the brand, the screen title centred, the Sources gear. */
 @Composable
 fun AppHeader(title: String, sourcesOpen: Boolean, onSources: (Boolean) -> Unit) {
-    Box(Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel).padding(start = 20.dp, end = 8.dp)) {
+    Box(Modifier.topBar().padding(start = 20.dp, end = 8.dp)) {
         Text("miptv", color = Palette.Accent, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart))
         Text(title, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center))
         IconButton(onClick = { onSources(!sourcesOpen) }, modifier = Modifier.align(Alignment.CenterEnd).testTag("open-sources")) {
@@ -179,7 +192,7 @@ fun AppHeader(title: String, sourcesOpen: Boolean, onSources: (Boolean) -> Unit)
 /** Bar of a nested screen: back arrow, title, then [actions]. */
 @Composable
 fun BackHeader(title: String, onBack: () -> Unit, backTag: String, backLabel: String = tr.back, titleTag: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().height(64.dp).background(Palette.Panel).padding(start = 4.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.topBar().padding(start = 4.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.testTag(backTag)) { Icon(MiptvIcons.Back, contentDescription = backLabel) }
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).then(if (titleTag != null) Modifier.testTag(titleTag) else Modifier))
@@ -190,18 +203,13 @@ fun BackHeader(title: String, onBack: () -> Unit, backTag: String, backLabel: St
 /** The five tabs, with the soft accent pill behind the current one. */
 @Composable
 fun MiptvNavBar(current: Destination?, onNavigate: (Destination) -> Unit) {
+    if (Palette.glass) return GlassNavBar(current, onNavigate)
     NavigationBar(
         containerColor = Palette.Panel,
         modifier = Modifier.drawBehind { drawLine(Palette.Raised, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
     ) {
         Destination.entries.forEach { destination ->
-            val icon = when (destination) {
-                Destination.HOME -> MiptvIcons.Home
-                Destination.TV -> MiptvIcons.Tv
-                Destination.MOVIES -> MiptvIcons.Film
-                Destination.SERIES -> MiptvIcons.Series
-                Destination.SEARCH -> MiptvIcons.Search
-            }
+            val icon = destination.icon
             val selected = current == destination
             NavigationBarItem(
                 selected = selected,
@@ -218,6 +226,43 @@ fun MiptvNavBar(current: Destination?, onNavigate: (Destination) -> Unit) {
     }
 }
 
+private val Destination.icon: ImageVector get() = when (this) {
+    Destination.HOME -> MiptvIcons.Home
+    Destination.TV -> MiptvIcons.Tv
+    Destination.MOVIES -> MiptvIcons.Film
+    Destination.SERIES -> MiptvIcons.Series
+    Destination.SEARCH -> MiptvIcons.Search
+}
+
+/** Space the floating glass bar takes: the capsule and its margins. */
+val GlassNavSpace = 92.dp
+
+/** The tabs in a floating glass capsule that blurs the screen under it; the current tab on tinted glass. */
+@Composable
+private fun GlassNavBar(current: Destination?, onNavigate: (Destination) -> Unit) {
+    Row(
+        Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp).fillMaxWidth().height(68.dp)
+            .glass(RoundedCornerShape(34.dp), blur = true).selectableGroup().padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Destination.entries.forEach { destination ->
+            val selected = current == destination
+            Column(
+                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(28.dp))
+                    .selectable(selected = selected, role = Role.Tab, onClick = { onNavigate(destination) })
+                    .testTag("nav-${destination.name}"),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
+            ) {
+                Box(
+                    Modifier.size(56.dp, 32.dp).then(if (selected) Modifier.glass(RoundedCornerShape(16.dp), Glass.TINT) else Modifier),
+                    contentAlignment = Alignment.Center
+                ) { Icon(destination.icon, contentDescription = null, tint = if (selected) Palette.Accent else Palette.Muted, modifier = Modifier.size(22.dp)) }
+                Text(destination.label, maxLines = 1, fontSize = 11.sp, color = if (selected) Palette.Text else Palette.Muted, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
+    }
+}
+
 /** Thin rounded progress line in the accent, on a raised track. */
 @Composable
 fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, track: Color = Palette.Raised) {
@@ -229,9 +274,12 @@ fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, height: Dp = 3.
 /** Pill in the text colour for the main action of a screen, translucent for the secondary one; [colors] over a video. */
 @Composable
 fun PillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, primary: Boolean = true, height: Dp = 44.dp, colors: ThemeColors = Palette.colors) {
+    val shape = RoundedCornerShape(height / 2)
     Row(
-        modifier.height(height).clip(RoundedCornerShape(height / 2)).background(if (primary) colors.text else colors.text.copy(alpha = 0.14f))
-            .clickable(onClick = onClick).padding(horizontal = 20.dp),
+        modifier.height(height).then(
+            if (primary) Modifier.clip(shape).background(colors.text)
+            else Modifier.surface(shape, colors.text.copy(alpha = 0.14f), if (colors !== Palette.colors) Glass.MEDIA else Glass.REGULAR)
+        ).clickable(onClick = onClick).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
     ) {
         val color = if (primary) colors.ink else colors.text
@@ -268,7 +316,7 @@ fun PagerDots(count: Int, current: Int, modifier: Modifier = Modifier) {
 fun LiveBadge(modifier: Modifier = Modifier) {
     val video = Palette.Video
     Row(
-        modifier.clip(RoundedCornerShape(50)).background(video.ink.copy(alpha = 0.75f)).padding(horizontal = 10.dp, vertical = 4.dp),
+        modifier.surface(RoundedCornerShape(50), video.ink.copy(alpha = 0.75f), Glass.MEDIA).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(video.accent))

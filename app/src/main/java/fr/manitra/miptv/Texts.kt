@@ -176,6 +176,8 @@ interface Texts {
     val themeSystem: String
     val themeLight: String
     val themeDark: String
+    val glassEffect: String
+    val glassEffectHint: String
     val m3uPlaylist: String
     val xtreamProvider: String
     val newSource: String
