@@ -20,6 +20,7 @@ class ThemeTest {
         assertSame(LightColors, ThemeMode.SYSTEM.colors(deviceDark = false))
         assertSame(LightColors, ThemeMode.LIGHT.colors(deviceDark = true))
         assertSame(DarkColors, ThemeMode.DARK.colors(deviceDark = false))
+        assertSame(GlassColors, ThemeMode.GLASS.colors(deviceDark = false))
     }
 
     @Test

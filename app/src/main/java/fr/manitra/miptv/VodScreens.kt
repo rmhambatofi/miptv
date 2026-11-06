@@ -401,7 +401,7 @@ private fun CatalogueHero(entries: List<HeroEntry>, placeholder: String) {
             val entry = entries[page]
             Box(Modifier.fillMaxSize().clickable(onClick = entry.open)) {
                 Backdrop(entry.imageUrl, placeholder)
-                Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Palette.Ink)))
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Palette.Fade)))
                 Column(Modifier.align(Alignment.BottomCenter).padding(start = 20.dp, end = 20.dp, bottom = 26.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     entry.label?.let { Text(it, color = Palette.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp) }
                     Text(entry.title, fontSize = 28.sp, fontWeight = FontWeight.Black, lineHeight = 31.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -418,7 +418,7 @@ private fun CatalogueHero(entries: List<HeroEntry>, placeholder: String) {
 private fun SheetHero(title: String, meta: String, metaTag: String, imageUrl: String?, placeholder: String, height: Dp, onBack: () -> Unit, action: @Composable () -> Unit) {
     Box(Modifier.fillMaxWidth().height(height)) {
         Backdrop(imageUrl, placeholder)
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Palette.Ink)))
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Palette.Fade)))
         IconButton(onClick = onBack, modifier = Modifier.padding(14.dp).size(44.dp).surface(CircleShape, Palette.Ink.copy(alpha = 0.6f)).testTag("close-sheet")) {
             Icon(MiptvIcons.Back, contentDescription = tr.back)
         }

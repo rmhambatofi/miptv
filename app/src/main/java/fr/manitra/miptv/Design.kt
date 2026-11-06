@@ -41,7 +41,9 @@ class ThemeColors(
     val heroStart: Color, val heroEnd: Color,
     /** Centre of the opening screen's glow and the relief under its « IPTV ». */
     val glow: Color, val emboss: Color,
-    val light: Boolean
+    val light: Boolean,
+    /** The liquid glass theme: a lit, coloured backdrop under translucent glass bars, cards and buttons. */
+    val glass: Boolean = false
 )
 
 val DarkColors = ThemeColors(
@@ -58,14 +60,25 @@ val LightColors = ThemeColors(
 )
 
 /**
+ * The liquid glass theme: a night blue ground lit from the top in blue and from below in rose ([GlassBackdrop]),
+ * under translucent white surfaces, so the light shows through every card.
+ */
+val GlassColors = ThemeColors(
+    ink = Color(0xFF1A2038), panel = Color.White.copy(alpha = 0.09f), raised = Color.White.copy(alpha = 0.14f), accent = Color(0xFFFF5C7A),
+    accentSoft = Color(0xFFFF5C7A).copy(alpha = 0.22f), onAccent = Color(0xFF330010), text = Color(0xFFF7F8FF), muted = Color(0xFFC3C8E0),
+    dim = Color(0xFF7A80A0), faded = Color(0xFF9AA0C0), link = Color(0xFFAFC2FF), heroStart = Color(0xFF5A3A8C), heroEnd = Color(0xFF2B4FB0),
+    glow = Color(0xFF2E4FA8), emboss = Color(0xFFA8B0D0), light = false, glass = true
+)
+
+/**
  * The colours of the current theme ([ThemeChoice]), set by the activity. Held in a state, so whatever reads them
  * (composition or drawing) follows a change of theme. The picture of a player stays dark: its overlays use [Video].
  */
 object Palette {
     var colors: ThemeColors by mutableStateOf(DarkColors)
 
-    /** The liquid glass option ([GlassChoice]), over whichever theme is chosen. */
-    var glass: Boolean by mutableStateOf(false)
+    /** The liquid glass theme is on: bars and buttons turn to glass ([Modifier.glass]). */
+    val glass: Boolean get() = colors.glass
 
     /** Over a video, whatever the theme. */
     val Video: ThemeColors get() = DarkColors
@@ -74,22 +87,28 @@ object Palette {
     val Panel get() = colors.panel
     val Raised get() = colors.raised
     val Accent get() = colors.accent
-    /** Behind a selected item; translucent accent under the glass option, so the glass shows through. */
-    val AccentSoft get() = if (glass) colors.accent.copy(alpha = if (colors.light) 0.12f else 0.18f) else colors.accentSoft
+    val AccentSoft get() = colors.accentSoft
+    /** What the bottom of a hero fades into: the ground, or nothing in the liquid glass theme so its backdrop shows. */
+    val Fade: Color get() = if (glass) Color.Transparent else colors.ink
     val Text get() = colors.text
     val Muted get() = colors.muted
     val Dim get() = colors.dim
     val Link get() = colors.link
 }
 
-/** The theme of the interface: the device's, or light or dark whatever the device. */
+/** The theme of the interface: the device's, light, dark, or liquid glass whatever the device. */
 enum class ThemeMode(val key: String) {
-    SYSTEM("system"), LIGHT("light"), DARK("dark");
+    SYSTEM("system"), LIGHT("light"), DARK("dark"), GLASS("glass");
 
-    val label: String get() = when (this) { SYSTEM -> tr.themeSystem; LIGHT -> tr.themeLight; DARK -> tr.themeDark }
+    val label: String get() = when (this) { SYSTEM -> tr.themeSystem; LIGHT -> tr.themeLight; DARK -> tr.themeDark; GLASS -> tr.themeGlass }
 
     /** The colours of this mode on a device in dark mode or not. */
-    fun colors(deviceDark: Boolean): ThemeColors = when (this) { SYSTEM -> if (deviceDark) DarkColors else LightColors; LIGHT -> LightColors; DARK -> DarkColors }
+    fun colors(deviceDark: Boolean): ThemeColors = when (this) {
+        SYSTEM -> if (deviceDark) DarkColors else LightColors
+        LIGHT -> LightColors
+        DARK -> DarkColors
+        GLASS -> GlassColors
+    }
 
     companion object {
         /** Dark until a theme is chosen: the look the app always had. */
@@ -104,7 +123,18 @@ object ThemeChoice {
     private const val PREFERENCES = "settings"
     private const val KEY = "theme"
 
-    fun get(context: Context): ThemeMode = ThemeMode.fromKey(context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getString(KEY, null))
+    /** The former « liquid glass effect » switch, laid over the dark or light theme; now a theme of its own. */
+    private const val FORMER_GLASS = "glass"
+
+    fun get(context: Context): ThemeMode {
+        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        // Whoever had switched the glass effect on keeps the glass look, now as the liquid glass theme.
+        if (preferences.contains(FORMER_GLASS)) {
+            val wasOn = preferences.getBoolean(FORMER_GLASS, false)
+            preferences.edit().remove(FORMER_GLASS).apply { if (wasOn) putString(KEY, ThemeMode.GLASS.key) }.apply()
+        }
+        return ThemeMode.fromKey(preferences.getString(KEY, null))
+    }
 
     fun set(context: Context, mode: ThemeMode) {
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().putString(KEY, mode.key).apply()
@@ -171,7 +201,7 @@ fun splitZone(name: String): Pair<String?, String> {
     return match.groupValues[1].uppercase() to match.groupValues[2].trim()
 }
 
-/** The bar at the top of a screen: the panel colour, or a floating glass capsule under the glass option. */
+/** The bar at the top of a screen: the panel colour, or a floating glass capsule in the liquid glass theme. */
 @Composable
 fun Modifier.topBar(): Modifier =
     if (Palette.glass) fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp).height(56.dp).glass(RoundedCornerShape(28.dp))

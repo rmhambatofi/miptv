@@ -98,7 +98,6 @@ class MainActivity : ComponentActivity() {
         val deviceDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         val colors = ThemeChoice.get(this).colors(deviceDark)
         Palette.colors = colors
-        Palette.glass = GlassChoice.get(this)
         val transparent = android.graphics.Color.TRANSPARENT
         if (colors.light) enableEdgeToEdge(SystemBarStyle.light(transparent, transparent), SystemBarStyle.light(LIGHT_SCRIM, DARK_SCRIM))
         else enableEdgeToEdge(SystemBarStyle.dark(transparent), SystemBarStyle.dark(DARK_SCRIM))
@@ -136,14 +135,21 @@ fun FullscreenEffect(fullscreen: Boolean) {
 fun MiptvTheme(content: @Composable () -> Unit) {
     val colors = Palette.colors
     val scheme = if (colors.light) lightColorScheme() else darkColorScheme()
+    // In the liquid glass theme cards are translucent (panel, raised), but menus, dialogs and sheets, which open over
+    // the content, stay opaque so they read.
+    val solid = if (colors.glass) GLASS_SOLID else null
     MaterialTheme(colorScheme = scheme.copy(
-        background = colors.ink, surface = colors.panel, surfaceVariant = colors.raised,
-        surfaceContainer = colors.panel, surfaceContainerHigh = colors.raised, surfaceContainerHighest = colors.raised,
+        background = colors.ink, surface = solid ?: colors.panel, surfaceVariant = colors.raised,
+        surfaceContainer = solid ?: colors.panel, surfaceContainerHigh = solid ?: colors.raised, surfaceContainerHighest = colors.raised,
+        surfaceContainerLow = solid ?: scheme.surfaceContainerLow,
         primary = colors.accent, onPrimary = colors.onAccent, primaryContainer = colors.accentSoft, onPrimaryContainer = colors.text,
         secondary = colors.link, secondaryContainer = colors.accentSoft, onSecondaryContainer = colors.text,
         onBackground = colors.text, onSurface = colors.text, onSurfaceVariant = colors.muted, outline = colors.dim, outlineVariant = colors.raised
     ), content = content)
 }
+
+/** Ground of the menus, dialogs and sheets of the liquid glass theme. */
+private val GLASS_SOLID = Color(0xFF252B4C)
 
 /** UI callbacks, grouped so screens and tests share one wiring. */
 class PhoneActions(
@@ -273,11 +279,17 @@ fun PhoneApp(state: LiveState, actions: PhoneActions, feeds: ChannelFeeds) {
             exit = slideOutVertically { it } + shrinkVertically(shrinkTowards = Alignment.Top)
         ) { MiptvNavBar(if (state.sourcesOpen) null else state.destination, actions.navigate) }
     }
-    // Under the glass option the bar floats over the screen, which scrolls and blurs under it. A player turned
+    // In the liquid glass theme the bar floats over the screen, which scrolls and blurs under it. A player turned
     // sideways keeps the bar below its picture, so the bar never covers the video's controls.
     val floatingBar = Palette.glass && !tapToLower
     val glassSource = remember { HazeState() }
-    Scaffold(containerColor = Palette.Ink, bottomBar = { if (!floatingBar) navBar() }) { padding ->
+    // The liquid glass theme lays every screen over its lit backdrop.
+    Scaffold(
+        modifier = if (Palette.glass) Modifier.glassBackdrop() else Modifier,
+        containerColor = if (Palette.glass) Color.Transparent else Palette.Ink,
+        contentColor = Palette.Text,
+        bottomBar = { if (!floatingBar) navBar() }
+    ) { padding ->
         val guide = state.guideSheet
         val scrollState = key(state.destination, state.sourcesOpen, state.channelsOpen, state.playerOpen && state.selected != null, state.movieSheet?.movie?.id, state.seriesSheet?.series?.id, guide?.channel?.id, guide?.dayStartMs) { rememberLazyListState() }
         // Once the day's programmes arrive, show the one on air (or the searched one) first.
@@ -374,7 +386,7 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
     }
     Box(Modifier.fillMaxWidth().height(500.dp).testTag("home-hero")) {
         if (slides.isEmpty()) {
-            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Palette.colors.heroStart, Palette.colors.heroEnd))))
+            Box(Modifier.fillMaxSize().fadeIntoGlass().background(Brush.linearGradient(listOf(Palette.colors.heroStart, Palette.colors.heroEnd))))
             HeroShade()
             Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(tr.tagline, fontSize = 30.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, lineHeight = 34.sp)
@@ -436,13 +448,13 @@ private fun HomeHero(state: LiveState, actions: PhoneActions) {
 /** Darkens the top for the brand bar and fades the bottom into the ground. */
 @Composable
 fun BoxScope.HeroShade() {
-    Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Palette.Ink.copy(alpha = 0.55f), 0.25f to Color.Transparent, 0.45f to Color.Transparent, 1f to Palette.Ink)))
+    Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Palette.Ink.copy(alpha = 0.55f), 0.25f to Color.Transparent, 0.45f to Color.Transparent, 1f to Palette.Fade)))
 }
 
 /** Full-bleed picture behind a hero, or a labelled tinted ground when there is none. */
 @Composable
 fun BoxScope.Backdrop(url: String?, placeholder: String) {
-    Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(Palette.colors.heroStart, Palette.colors.heroEnd))), contentAlignment = Alignment.Center) {
+    Box(Modifier.matchParentSize().fadeIntoGlass().background(Brush.linearGradient(listOf(Palette.colors.heroStart, Palette.colors.heroEnd))), contentAlignment = Alignment.Center) {
         if (url != null) SubcomposeAsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
             error = { HeroPlaceholder(placeholder) }, loading = { })
         else HeroPlaceholder(placeholder)
