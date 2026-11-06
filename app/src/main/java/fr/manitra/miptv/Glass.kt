@@ -1,6 +1,5 @@
 package fr.manitra.miptv
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.runtime.Composable
@@ -8,6 +7,12 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -20,8 +25,8 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 
 /**
- * The liquid glass option: on top of the theme chosen (dark or light), bars and buttons become translucent glass
- * with a sheen at the top and a bright edge. It changes no colour of the theme itself.
+ * The materials of the liquid glass theme ([GlassColors]): bars and buttons are translucent glass with a sheen at
+ * the top and a bright edge, over the lit backdrop of [Modifier.glassBackdrop].
  */
 enum class Glass {
     /** Bars, menus and floating controls. */
@@ -33,23 +38,11 @@ enum class Glass {
     /** A selected item, tinted with the accent. */
     TINT,
 
-    /** Over a video: dark glass whatever the theme. */
+    /** Over a video. */
     MEDIA
 }
 
-/** The liquid glass option chosen in the settings, kept in the app's preferences; off until chosen. */
-object GlassChoice {
-    private const val PREFERENCES = "settings"
-    private const val KEY = "glass"
-
-    fun get(context: Context): Boolean = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getBoolean(KEY, false)
-
-    fun set(context: Context, on: Boolean) {
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().putBoolean(KEY, on).apply()
-    }
-}
-
-/** What the floating bar blurs: the content of the screen, while the glass option is on. */
+/** What the floating bar blurs: the content of the screen, in the liquid glass theme. */
 val LocalGlassSource = staticCompositionLocalOf<HazeState?> { null }
 
 /** Height the floating bar covers at the bottom of the screen, which the lists scroll past. */
@@ -60,19 +53,28 @@ class GlassLook(val fill: Color, val sheenTop: Color, val sheenBottom: Color, va
 
 private val White = Color.White
 
-/** The recipe of [kind] on [colors]; [Glass.MEDIA] always takes the dark one. */
+/** The recipe of [kind], selections tinted with the accent of [colors]. */
 fun glassLook(kind: Glass, colors: ThemeColors): GlassLook {
-    val dark = kind == Glass.MEDIA || !colors.light
     val accent = colors.accent
-    return when {
-        kind == Glass.MEDIA -> GlassLook(DarkColors.ink.copy(alpha = 0.34f), White.copy(alpha = 0.18f), White.copy(alpha = 0.04f), White.copy(alpha = 0.34f), White.copy(alpha = 0.08f), Color.Black, 8.dp)
-        kind == Glass.TINT && dark -> GlassLook(accent.copy(alpha = 0.22f), White.copy(alpha = 0.20f), Color.Transparent, accent.copy(alpha = 0.55f), White.copy(alpha = 0.08f), accent, 0.dp)
-        kind == Glass.TINT -> GlassLook(accent.copy(alpha = 0.14f), White.copy(alpha = 0.60f), White.copy(alpha = 0.10f), accent.copy(alpha = 0.30f), White.copy(alpha = 0.50f), accent, 0.dp)
-        kind == Glass.THIN && dark -> GlassLook(Color(0xFF242938).copy(alpha = 0.40f), White.copy(alpha = 0.12f), White.copy(alpha = 0.03f), White.copy(alpha = 0.22f), White.copy(alpha = 0.05f), Color.Black, 0.dp)
-        kind == Glass.THIN -> GlassLook(White.copy(alpha = 0.55f), White.copy(alpha = 0.70f), White.copy(alpha = 0.30f), White, colors.text.copy(alpha = 0.06f), colors.text, 0.dp)
-        dark -> GlassLook(Color(0xFF1A1E2A).copy(alpha = 0.46f), White.copy(alpha = 0.16f), White.copy(alpha = 0.02f), White.copy(alpha = 0.32f), White.copy(alpha = 0.06f), Color.Black, 12.dp)
-        else -> GlassLook(White.copy(alpha = 0.55f), White.copy(alpha = 0.80f), White.copy(alpha = 0.40f), White, colors.text.copy(alpha = 0.08f), colors.text, 8.dp)
+    return when (kind) {
+        Glass.MEDIA -> GlassLook(DarkColors.ink.copy(alpha = 0.34f), White.copy(alpha = 0.18f), White.copy(alpha = 0.04f), White.copy(alpha = 0.34f), White.copy(alpha = 0.08f), Color.Black, 8.dp)
+        Glass.TINT -> GlassLook(accent.copy(alpha = 0.22f), White.copy(alpha = 0.20f), Color.Transparent, accent.copy(alpha = 0.55f), White.copy(alpha = 0.08f), accent, 0.dp)
+        Glass.THIN -> GlassLook(White.copy(alpha = 0.08f), White.copy(alpha = 0.10f), White.copy(alpha = 0.02f), White.copy(alpha = 0.24f), White.copy(alpha = 0.06f), Color.Black, 0.dp)
+        Glass.REGULAR -> GlassLook(Color(0xFF1C2244).copy(alpha = 0.42f), White.copy(alpha = 0.16f), White.copy(alpha = 0.03f), White.copy(alpha = 0.32f), White.copy(alpha = 0.06f), Color.Black, 12.dp)
     }
+}
+
+/**
+ * The ground of the liquid glass theme: night blue, lit in blue from the top, a violet halo in the middle and a rose
+ * glow rising from the bottom, for the glass above to catch.
+ */
+fun Modifier.glassBackdrop(): Modifier = drawBehind {
+    val w = size.width
+    val h = size.height
+    drawRect(Brush.verticalGradient(0f to Color(0xFF2B4DB5), 0.22f to Color(0xFF2C3796), 0.5f to Color(0xFF1C2244), 0.78f to Color(0xFF1A1E33), 1f to Color(0xFF2E2238)))
+    drawRect(Brush.radialGradient(listOf(Color(0xFF3F6FE6).copy(alpha = 0.55f), Color.Transparent), Offset(w * 0.5f, 0f), w * 0.95f))
+    drawRect(Brush.radialGradient(listOf(Color(0xFF4B45B8).copy(alpha = 0.45f), Color.Transparent), Offset(w * 0.6f, h * 0.32f), w * 0.6f))
+    drawRect(Brush.radialGradient(listOf(Color(0xFF8E3456).copy(alpha = 0.65f), Color.Transparent), Offset(w * 0.3f, h), w * 1.05f))
 }
 
 /**
@@ -92,7 +94,13 @@ fun Modifier.glass(shape: Shape, kind: Glass = Glass.REGULAR, blur: Boolean = fa
         .border(1.dp, Brush.verticalGradient(listOf(look.edgeTop, look.edgeBottom)), shape)
 }
 
-/** Glass of [kind] while the option is on, else the plain [fallback] fill of the theme. */
+/** In the liquid glass theme, the picture or ground of a hero melts into the backdrop at its bottom. */
+fun Modifier.fadeIntoGlass(): Modifier = if (!Palette.glass) this else graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen).drawWithContent {
+    drawContent()
+    drawRect(Brush.verticalGradient(0.5f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+}
+
+/** Glass of [kind] in the liquid glass theme, else the plain [fallback] fill of the theme. */
 @Composable
 fun Modifier.surface(shape: Shape, fallback: Color, kind: Glass = Glass.REGULAR, blur: Boolean = false): Modifier =
     if (Palette.glass) glass(shape, kind, blur) else clip(shape).background(fallback)

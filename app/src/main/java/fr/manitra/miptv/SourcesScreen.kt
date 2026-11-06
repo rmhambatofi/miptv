@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -51,7 +50,6 @@ class SourceActions(
 fun LazyListScope.sourcesSection(state: LiveState, actions: SourceActions) {
     item(key = "language") { LanguageCard() }
     item(key = "theme") { ThemeCard() }
-    item(key = "glass") { GlassCard() }
     item { Text(tr.sources, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     item { Text(tr.sourcesIntro, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     item { AddSourceCard(state, actions) }
@@ -86,7 +84,7 @@ private fun LanguageCard() {
     }
 }
 
-/** Theme of the interface: dark (the default), light, or the device's. It applies at once (see [ThemeChoice]). */
+/** Theme of the interface: dark (the default), light, liquid glass, or the device's. It applies at once (see [ThemeChoice]). */
 @Composable
 private fun ThemeCard() {
     val context = LocalContext.current
@@ -95,32 +93,6 @@ private fun ThemeCard() {
         ThemeChoice.set(context, mode)
         chosen = mode
         (context.findActivity() as? MainActivity)?.applyTheme()
-    }
-}
-
-/** The liquid glass option, over the theme chosen above. It applies at once (see [GlassChoice]). */
-@Composable
-private fun GlassCard() {
-    val context = LocalContext.current
-    var on by remember { mutableStateOf(GlassChoice.get(context)) }
-    Card(Modifier.fillMaxWidth().testTag("glass-card")) {
-        Row(
-            Modifier.fillMaxWidth()
-                .toggleable(value = on, role = Role.Switch, onValueChange = { value ->
-                    GlassChoice.set(context, value)
-                    on = value
-                    (context.findActivity() as? MainActivity)?.applyTheme()
-                })
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-                .testTag("glass-switch"),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(tr.glassEffect, style = MaterialTheme.typography.titleMedium)
-                Text(tr.glassEffectHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Switch(checked = on, onCheckedChange = null)
-        }
     }
 }
 
